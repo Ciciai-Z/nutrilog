@@ -1,0 +1,299 @@
+// ============================================================
+// NutriLog — search.js
+// Block B2: Food Search + Favourites
+// ============================================================
+
+import { CONFIG }                                    from '../config.js';
+import { searchFoods, getFavourites, toggleFavourite } from './api.js';
+import { store }                                     from './store.js';
+import { showToast }                                 from './ui.js';
+import { calcCalories }                              from './utils.js';
+
+// ── Module state ─────────────────────────────────────────────
+
+let debounceTimer    = null;
+let selectedMealType = CONFIG.labels.mealTypes[0]; // default: Breakfast
+
+// ── Init ─────────────────────────────────────────────────────
+
+export async function initSearch() {
+  console.log('[search] initSearch → start');
+  renderSearchPage();
+  await ensureFoodsLoaded();
+  bindSearchEvents();
+  console.log('[search] initSearch → ready');
+}
+
+function renderSearchPage() {
+  const view = document.getElementById('view-search');
+  if (!view) return;
+
+  view.innerHTML = `
+    <div class="search-container">
+      <div class="search-bar-wrap">
+        <input
+          id="food-search-input"
+          class="search-input"
+          type="search"
+          placeholder="Search foods…"
+          autocomplete="off"
+          autocorrect="off"
+          spellcheck="false"
+        />
+      </div>
+      <div id="search-results" class="search-results" role="list"></div>
+    </div>
+  `;
+}
+
+// ── Data loading ─────────────────────────────────────────────
+
+async function ensureFoodsLoaded() {
+  if (store.state.foods && store.state.foods.length > 0) {
+    console.log('[search] ensureFoodsLoaded → cache hit, skipping API');
+    return;
+  }
+
+  console.log('[search] ensureFoodsLoaded → fetching all foods');
+  try {
+    const foods = await searchFoods('');
+    store.state.foods = foods;
+    console.log(`[search] ensureFoodsLoaded → loaded ${foods.length} foods`);
+  } catch (err) {
+    console.error('[search] ensureFoodsLoaded →', err);
+    showToast('Failed to load food database', 'error');
+  }
+}
+
+async function ensureFavouritesLoaded() {
+  if (store.state.favourites) return;
+
+  console.log('[search] ensureFavouritesLoaded → fetching');
+  try {
+    const ids = await getFavourites();
+    store.state.favourites = new Set(ids);
+    console.log(`[search] ensureFavouritesLoaded → ${ids.length} favourites`);
+  } catch (err) {
+    console.error('[search] ensureFavouritesLoaded →', err);
+    store.state.favourites = new Set();
+  }
+}
+
+// ── Events ───────────────────────────────────────────────────
+
+function bindSearchEvents() {
+  const input = document.getElementById('food-search-input');
+  if (!input) return;
+
+  input.addEventListener('input', () => {
+    clearTimeout(debounceTimer);
+    debounceTimer = setTimeout(() => runSearch(input.value), CONFIG.search.debounceMs);
+  });
+
+  // Show favourites immediately on focus with empty query
+  input.addEventListener('focus', () => {
+    if (!input.value.trim()) runSearch('');
+  });
+}
+
+// ── Search logic ─────────────────────────────────────────────
+
+async function runSearch(rawQuery) {
+  const q = rawQuery.trim().toLowerCase();
+
+  await ensureFavouritesLoaded();
+
+  const foods = store.state.foods || [];
+  if (!foods.length) {
+    renderResults([], q);
+    return;
+  }
+
+  // Filter: empty query shows favourites only; otherwise substring match
+  let filtered;
+  if (q.length === 0) {
+    const favSet = store.state.favourites || new Set();
+    filtered = foods.filter(f => favSet.has(f.no));
+  } else if (q.length < CONFIG.search.minChars) {
+    filtered = [];
+  } else {
+    filtered = foods.filter(f => f.name.toLowerCase().includes(q));
+  }
+
+  // Sort: favourites first, then alphabetical
+  const favSet = store.state.favourites || new Set();
+  filtered.sort((a, b) => {
+    const aFav = favSet.has(a.no) ? 0 : 1;
+    const bFav = favSet.has(b.no) ? 0 : 1;
+    if (aFav !== bFav) return aFav - bFav;
+    return a.name.localeCompare(b.name);
+  });
+
+  renderResults(filtered.slice(0, CONFIG.search.maxResults), q);
+}
+
+// ── Render ───────────────────────────────────────────────────
+
+function renderResults(foods, q) {
+  const container = document.getElementById('search-results');
+  if (!container) return;
+
+  if (!foods.length) {
+    container.innerHTML = q
+      ? `<p class="search-empty">No results for "<strong>${escapeHtml(q)}</strong>"</p>`
+      : `<p class="search-empty">Search for a food to get started</p>`;
+    return;
+  }
+
+  container.innerHTML = foods.map(f => renderFoodRow(f, q)).join('');
+
+  // Bind row events
+  container.querySelectorAll('.search-result-row').forEach(row => {
+    const no = Number(row.dataset.foodNo);
+    row.querySelector('.result-info')?.addEventListener('click', () => openAddSheet(no));
+    row.querySelector('.fav-btn')?.addEventListener('click', e => {
+      e.stopPropagation();
+      handleToggleFavourite(no, row);
+    });
+  });
+}
+
+function renderFoodRow(food, q) {
+  const favSet    = store.state.favourites || new Set();
+  const isFav     = favSet.has(food.no);
+  const cals      = calcCalories(food.protein, food.carbs, food.fat);
+  const highlight = q ? highlightMatch(food.name, q) : escapeHtml(food.name);
+
+  return `
+    <div class="search-result-row" data-food-no="${food.no}" role="listitem">
+      <button class="fav-btn ${isFav ? 'fav-btn--active' : ''}"
+              aria-label="${isFav ? 'Remove from favourites' : 'Add to favourites'}">★</button>
+      <div class="result-info">
+        <span class="result-name">${highlight}</span>
+        <span class="result-meta">${food.amount}${food.unit} · ${cals} kcal</span>
+      </div>
+      <span class="result-macros">
+        P ${food.protein.toFixed(1)}g &nbsp; C ${food.carbs.toFixed(1)}g &nbsp; F ${food.fat.toFixed(1)}g
+      </span>
+    </div>
+  `;
+}
+
+function highlightMatch(name, q) {
+  if (!q) return escapeHtml(name);
+  const idx = name.toLowerCase().indexOf(q.toLowerCase());
+  if (idx === -1) return escapeHtml(name);
+  return (
+    escapeHtml(name.slice(0, idx)) +
+    `<mark class="search-highlight">${escapeHtml(name.slice(idx, idx + q.length))}</mark>` +
+    escapeHtml(name.slice(idx + q.length))
+  );
+}
+
+// ── Add sheet ────────────────────────────────────────────────
+// B2: shows toast only. B5 will wire up actual DailyLog write.
+
+function openAddSheet(foodNo) {
+  const food = (store.state.foods || []).find(f => f.no === foodNo);
+  if (!food) return;
+
+  document.getElementById('add-food-sheet')?.remove();
+
+  const sheet = document.createElement('div');
+  sheet.id    = 'add-food-sheet';
+  sheet.className = 'bottom-sheet';
+  sheet.innerHTML = buildAddSheetHTML(food);
+  document.body.appendChild(sheet);
+
+  requestAnimationFrame(() => sheet.classList.add('bottom-sheet--visible'));
+
+  sheet.querySelector('#add-sheet-cancel')?.addEventListener('click', closeAddSheet);
+  sheet.querySelector('#add-sheet-confirm')?.addEventListener('click', () => confirmAddFood(food, sheet));
+  sheet.querySelector('.bottom-sheet__backdrop')?.addEventListener('click', closeAddSheet);
+}
+
+function buildAddSheetHTML(food) {
+  const cals    = calcCalories(food.protein, food.carbs, food.fat);
+  const options = CONFIG.labels.mealTypes
+    .map(t => `<option value="${t}" ${t === selectedMealType ? 'selected' : ''}>${t}</option>`)
+    .join('');
+
+  return `
+    <div class="bottom-sheet__backdrop"></div>
+    <div class="bottom-sheet__panel">
+      <div class="bottom-sheet__header">
+        <span class="bottom-sheet__title">${escapeHtml(food.name)}</span>
+        <span class="bottom-sheet__sub">${cals} kcal per ${food.amount}${food.unit}</span>
+      </div>
+      <div class="bottom-sheet__body">
+        <label class="sheet-label" for="add-sheet-amount">Amount (${food.unit})</label>
+        <input id="add-sheet-amount" class="sheet-input" type="number"
+               min="1" step="1" value="${food.amount}" inputmode="decimal" />
+        <label class="sheet-label" for="add-sheet-meal">Meal</label>
+        <select id="add-sheet-meal" class="sheet-select">${options}</select>
+      </div>
+      <div class="bottom-sheet__footer">
+        <button id="add-sheet-cancel"  class="btn btn--ghost">Cancel</button>
+        <button id="add-sheet-confirm" class="btn btn--primary">Add to Log</button>
+      </div>
+    </div>
+  `;
+}
+
+function closeAddSheet() {
+  const sheet = document.getElementById('add-food-sheet');
+  if (!sheet) return;
+  sheet.classList.remove('bottom-sheet--visible');
+  setTimeout(() => sheet.remove(), 250);
+}
+
+function confirmAddFood(food, sheet) {
+  const amount   = parseFloat(sheet.querySelector('#add-sheet-amount')?.value) || food.amount;
+  const mealType = sheet.querySelector('#add-sheet-meal')?.value || selectedMealType;
+  selectedMealType = mealType;
+
+  // B2: toast only — B5 will wire up addLogEntry
+  console.log(`[search] confirmAddFood → food=${food.no} amount=${amount} meal=${mealType}`);
+  showToast(`"${food.name}" ready to add — log writing enabled in B5`, 'info');
+  closeAddSheet();
+}
+
+// ── Favourite toggle ─────────────────────────────────────────
+
+async function handleToggleFavourite(foodNo, rowEl) {
+  const favSet = store.state.favourites;
+  const wasFav = favSet.has(foodNo);
+
+  // Optimistic update
+  wasFav ? favSet.delete(foodNo) : favSet.add(foodNo);
+  updateFavBtn(rowEl, !wasFav);
+
+  try {
+    const result = await toggleFavourite(foodNo);
+    console.log(`[search] handleToggleFavourite → food=${foodNo} added=${result.added}`);
+    showToast(result.added ? 'Added to favourites ★' : 'Removed from favourites', 'success');
+  } catch (err) {
+    // Rollback on failure
+    wasFav ? favSet.add(foodNo) : favSet.delete(foodNo);
+    updateFavBtn(rowEl, wasFav);
+    console.error('[search] handleToggleFavourite →', err);
+    showToast('Failed to update favourite', 'error');
+  }
+}
+
+function updateFavBtn(rowEl, isFav) {
+  const btn = rowEl.querySelector('.fav-btn');
+  if (!btn) return;
+  btn.classList.toggle('fav-btn--active', isFav);
+  btn.setAttribute('aria-label', isFav ? 'Remove from favourites' : 'Add to favourites');
+}
+
+// ── Helpers ───────────────────────────────────────────────────
+
+function escapeHtml(str) {
+  return String(str)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}

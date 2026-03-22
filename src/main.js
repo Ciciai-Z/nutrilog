@@ -1,11 +1,13 @@
 // ============================================================
 // main.js — 路由初始化，页面切换入口
+// Updated: B2 (wires up initSearch)
 // ============================================================
 
 import { isLoggedIn, renderAuthScreen } from './auth.js';
-import { store }    from './store.js';
-import { getSettings } from './api.js';
-import { today }    from './utils.js';
+import { store }                        from './store.js';
+import { getSettings }                  from './api.js';
+import { today }                        from './utils.js';
+import { initSearch }                   from './search.js';
 
 // ── 页面骨架 HTML ─────────────────────────────────────────────
 
@@ -57,7 +59,7 @@ function setupTabBar() {
   });
 }
 
-function navigateTo(tab) {
+async function navigateTo(tab) {
   currentTab = tab;
 
   // 高亮当前 tab
@@ -65,18 +67,34 @@ function navigateTo(tab) {
     btn.classList.toggle('tab-bar__item--active', btn.dataset.tab === tab);
   });
 
-  // 渲染页面占位内容（B2–B9 逐步替换为真实内容）
   const content = document.getElementById('main-content');
-  const pages = {
-    today:    renderTodayPage,
-    search:   () => placeholderPage('Search', '🔍', 'Food search coming in B2'),
-    meals:    () => placeholderPage('Meals', '🍽', 'Meal templates coming in B8'),
-    history:  () => placeholderPage('History', '📅', 'History coming in B9'),
-    settings: renderSettingsPage,
-  };
 
-  const render = pages[tab];
-  if (render) content.innerHTML = render();
+  switch (tab) {
+    case 'today':
+      content.innerHTML = renderTodayPage();
+      break;
+
+    case 'search':
+      // B2: inject view container then hand off to search module
+      content.innerHTML = '<div id="view-search" class="page"></div>';
+      await initSearch();
+      break;
+
+    case 'meals':
+      content.innerHTML = placeholderPage('Meals', '🍽', 'Meal templates coming in B8');
+      break;
+
+    case 'history':
+      content.innerHTML = placeholderPage('History', '📅', 'History coming in B9');
+      break;
+
+    case 'settings':
+      content.innerHTML = renderSettingsPage();
+      break;
+
+    default:
+      content.innerHTML = placeholderPage(tab, '🔧', `${tab} coming soon`);
+  }
 }
 
 // ── 占位页面 ──────────────────────────────────────────────────
@@ -139,7 +157,6 @@ function renderSettingsPage() {
 
 async function onLogin() {
   store.setCurrentDate(today());
-
   try {
     const settings = await getSettings();
     store.setSettings(settings);
@@ -147,14 +164,12 @@ async function onLogin() {
   } catch (ex) {
     console.error('[main] failed to load settings:', ex.message);
   }
-
   renderAppShell();
 }
 
 // ── 启动 ──────────────────────────────────────────────────────
 
 window.addEventListener('nutrilog:login', onLogin);
-
 if (isLoggedIn()) {
   onLogin();
 } else {
