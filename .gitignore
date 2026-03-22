@@ -1,0 +1,10 @@
+# 含 Apps Script URL，不提交
+config.js
+
+# macOS
+.DS_Store
+.DS_Store?
+
+# Editor
+.vscode/
+.idea/

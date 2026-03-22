@@ -1,0 +1,61 @@
+/* ============================================================
+   tokens.css — CSS 设计变量（颜色、圆角、字体、间距）
+   所有颜色必须引用这里的变量，不得硬编码色值
+   ============================================================ */
+
+@import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600&family=DM+Serif+Display&display=swap');
+
+:root {
+  /* ── 颜色 ── */
+  --color-bg-page:      #F2EFE9;   /* 暖米白 背景 */
+  --color-bg-card:      #FFFFFF;   /* 卡片背景 */
+  --color-accent:       #697A58;   /* Olive 绿 主色 */
+  --color-accent-dark:  #4E5C40;   /* Olive 深 */
+  --color-accent-light: #EDF0E8;   /* Olive 淡 */
+  --color-text-primary: #1C1C1A;   /* 主文字 */
+  --color-text-secondary: #6B6B65; /* 次文字 */
+  --color-border:       #E4E0D8;   /* 边框 */
+
+  /* 进度条状态色 */
+  --color-progress-normal:  #697A58;   /* olive 正常 */
+  --color-progress-warning: #B7711A;   /* amber >110% */
+  --color-progress-danger:  #C0392B;   /* red   >120% */
+
+  /* 功能色 */
+  --color-error:   #C0392B;
+  --color-success: #697A58;
+
+  /* ── 圆角 ── */
+  --radius-card:   14px;
+  --radius-btn:    20px;   /* pill 按钮 */
+  --radius-input:  10px;
+  --radius-sm:     6px;
+
+  /* ── 字体 ── */
+  --font-sans:   'DM Sans', -apple-system, sans-serif;
+  --font-serif:  'DM Serif Display', Georgia, serif;
+
+  /* ── 字号 ── */
+  --text-xs:   11px;
+  --text-sm:   13px;
+  --text-base: 15px;
+  --text-md:   17px;
+  --text-lg:   20px;
+  --text-xl:   24px;
+  --text-2xl:  30px;
+
+  /* ── 间距 ── */
+  --space-1:  4px;
+  --space-2:  8px;
+  --space-3:  12px;
+  --space-4:  16px;
+  --space-5:  20px;
+  --space-6:  24px;
+  --space-8:  32px;
+
+  /* ── 阴影 ── */
+  --shadow-card: 0 1px 4px rgba(0,0,0,0.06), 0 2px 12px rgba(0,0,0,0.04);
+
+  /* ── Tab Bar 高度 ── */
+  --tab-bar-height: 56px;
+}
