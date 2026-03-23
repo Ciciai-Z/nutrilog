@@ -1365,3 +1365,27 @@ ul { list-style: none; }
     margin-right: var(--space-4);
   }
 }
+/* ============================================================
+   Mobile fix: hide sidebar elements on small screens
+   Append to styles/main.css
+   ============================================================ */
+
+/* Mobile: hide sidebar (it's Mac-only) */
+.log-sidebar {
+  display: none;
+}
+
+/* Mac: show sidebar, hide mobile-only elements */
+@media (min-width: 768px) {
+  .log-sidebar {
+    display: flex;
+  }
+
+  .log-sync-wrap {
+    display: none;
+  }
+
+  .log-summary-strip {
+    display: none;
+  }
+}
