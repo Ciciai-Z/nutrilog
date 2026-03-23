@@ -359,10 +359,12 @@ docs/
 
 ## 下一步行动
 
-**B4 完成 ✅ — 立即开始 B5 Log entry CRUD**
+**B5 完成 ✅ — 可以开始日常使用 ⭐**
 
-1. **B5（现在）** — Log 完整增删改，搜索结果真正写入 DailyLog，**完成后即可日常使用**
-2. **B6 → B9** — 在可用基础上持续迭代
+1. **B6** — Quick Add（外食估算直接记录）
+2. **B7** — Custom Foods + Favourites 管理
+3. **B8** — Meal 模板
+4. **B9** — Polish（TODO 里的优化项）
 
 ---
 
@@ -421,8 +423,8 @@ docs/
 | B2 | Food Search | ✅ 已完成 | 2026-03-23 | |
 | B3 | Settings | ✅ 已完成 | 2026-03-23 | |
 | B4 | Today Log 展示 | ✅ 已完成 | 2026-03-23 | |
-| B5 | Log entry CRUD | 🔄 进行中 | — | ⭐ 完成后即可日常使用 |
-| B6 | Quick Add | ⬜ 未开始 | — | |
+| B5 | Log entry CRUD | ✅ 已完成 | 2026-03-23 | ⭐ 完成后即可日常使用 |
+| B6 | Quick Add | 🔄 进行中 | — | |
 | B7 | Custom Foods + Favourites | ⬜ 未开始 | — | |
 | B8 | Meal templates | ⬜ 未开始 | — | |
 | B9 | Polish + remaining features | ⬜ 未开始 | — | |
@@ -508,25 +510,33 @@ docs/
 
 ---
 
-### B5 · Log entry CRUD（⬜ 未开始）⭐
+### B5 · Log entry CRUD（✅ 已完成，2026-03-23）⭐
 
-**依赖：** B2 + B4
+**验收通过：**
+- [x] Search → 选食物 → 填 Amount → 选 Meal Type → Add to Log → DailyLog sheet 出现新行
+- [x] 切回 Today tab → 显示刚添加的条目
+- [x] 点击 amount 徽章 → inline 编辑 → 回车 → 营养值更新
+- [x] iPhone 左滑 → Delete 按钮滑出 → 删除，无页面重载
+- [x] Mac hover → 右侧出现 Delete 按钮
+- [x] 删除最后一条 → meal section 整块消失
+- [x] Sync 按钮 → DailySummary 写入当日汇总（含 target 和实际值）
+- [x] Mac 双列布局：左列日志，右列营养汇总 + Sync 按钮
+- [x] Logout 按钮（Tab bar 最右侧）
+- [x] 搜索即时响应（去掉 debounce，本地过滤）
+- [x] 同一 Tab 不重复初始化
 
-**目标：** 完整的增删改查。完成后可在 iPhone 上日常使用记录饮食。
+**B5 期间修复的 Bug：**
+- Search 全量加载去掉 maxResults 限制（之前只加载前50条，搜不到 spinach 等）
+- DailySummary 列索引修正（B/D/F/H/J=target，C/E/G/I/K=实际值）
+- syncDailySummary 同时写入 target 值和实际值
+- 删除条目：直接移除 DOM，移除空 meal section，不重载整页
+- 左滑 Delete 空白：改用绝对定位，不占布局空间
+- mobile sidebar 隐藏（`.log-sidebar { display: none }` 默认隐藏，Mac 端显示）
+- Tab 切换同一 tab 不重复 initLog()
 
-**包含文件：**
-```
-gas/Code.gs          ← 新增 addLogEntry, updateLogEntry, deleteLogEntry, copyYesterdayMeal, syncDailySummary
-src/log.js           ← 增删改交互（左滑删除, inline edit, copy yesterday, 拖拽移动）
-src/search.js        ← 补全：搜索结果点击后真正写入 DailyLog
-```
+---
 
-**验收（对应 DevStandards T-03 到 T-08）：**
-- [ ] 搜索 → 选择 → 填写 150g → 选 Lunch → DailyLog 出现新行
-- [ ] 点击 amount 徽章 → 改数量 → 营养值实时更新
-- [ ] 左滑条目 → Delete → 条目消失，Sheets 行删除
-- [ ] 点击 ⎘ 图标 → 昨天同餐次的条目出现在今天
-- [ ] 点击 Sync 按钮 → DailySummary 出现今日汇总行
+### B6 · Quick Add（⬜ 未开始）
 
 ---
 
