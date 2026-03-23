@@ -1,6 +1,6 @@
 // ============================================================
 // main.js — 路由初始化
-// Updated: Session 4 + Bug fixes (tab switch, layout, date pill)
+// Updated: Session 4 + Bug fixes v2 (tab switch guard fixed)
 // ============================================================
 import { isLoggedIn, renderAuthScreen, logout } from './auth.js';
 import { store } from './store.js';
@@ -52,35 +52,30 @@ function renderAppShell() {
   navigateTo('today');
 }
 
-// ── Date pill ──────────────────────────────────────────────────
-// Format: "Mon 23 Mar" — readable, no slashes
+// ── Date pill — "Mon 23 Mar" ───────────────────────────────────
 function formatPillDate(dateStr) {
   if (!dateStr) return '';
-  // dateStr is ddd,d/m/yy  e.g. "Mon,23/3/26"
   try {
-    const parts = dateStr.replace(/^[^,]+,/, '').split('/'); // ["23","3","26"]
+    const parts = dateStr.replace(/^[^,]+,/, '').split('/');
     const day   = parseInt(parts[0]);
     const month = parseInt(parts[1]) - 1;
     const year  = 2000 + parseInt(parts[2]);
     const d     = new Date(year, month, day);
-    const DOW   = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
-    const MON   = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+    const DOW = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+    const MON = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
     return `${DOW[d.getDay()]} ${day} ${MON[month]}`;
-  } catch {
-    return dateStr;
-  }
+  } catch { return dateStr; }
 }
 
 function updateDatePill() {
   const pill = document.getElementById('nav-date-pill');
   if (!pill) return;
-  const d = store.state.currentDate || today();
-  pill.textContent = formatPillDate(d);
-  pill.title = 'Use ‹ › on Today to change date';
+  pill.textContent = formatPillDate(store.state.currentDate || today());
+  pill.title = 'Use \u2039 \u203a on Today to change date';
 }
 
 // ── Tab bar ────────────────────────────────────────────────────
-let currentTab  = null;
+let currentTab       = null;
 let macShellRendered = false;
 
 function setupTabBar() {
@@ -90,22 +85,23 @@ function setupTabBar() {
     if (btn.id === 'logout-btn') { handleLogout(); return; }
     const tab = btn.dataset.tab;
     if (!tab) return;
-    // Always allow switching — reset guard when coming from a non-sidebar tab
-    const isMacSidebar = window.innerWidth >= 768 && ['today','favourites','meals'].includes(tab);
-    const wasMacSidebar = window.innerWidth >= 768 && ['today','favourites','meals'].includes(currentTab);
-    // If we're coming from Settings/History/non-sidebar back to a sidebar tab,
-    // we need to rebuild the shell — reset the flag
-    if (isMacSidebar && !wasMacSidebar) {
-      macShellRendered = false;
-    }
-    // Skip re-init only if same tab AND shell is still intact
-    if (currentTab === tab && macShellRendered && document.getElementById('mac-left')) return;
-    if (currentTab === tab && !isMacSidebar) return;
     navigateTo(tab);
   });
 }
 
 export async function navigateTo(tab) {
+  const isMac        = window.innerWidth >= 768;
+  const isSidebarTab = isMac && ['today','favourites','meals'].includes(tab);
+  const wasSidebarTab= isMac && ['today','favourites','meals'].includes(currentTab);
+
+  // Only skip re-init when: same tab + sidebar + shell DOM still intact
+  if (tab === currentTab && isSidebarTab && document.getElementById('mac-left')) return;
+  // Skip same non-sidebar tab
+  if (tab === currentTab && !isSidebarTab) return;
+
+  // Coming back from Settings/History to a sidebar tab → must rebuild shell
+  if (isSidebarTab && !wasSidebarTab) macShellRendered = false;
+
   currentTab = tab;
 
   document.querySelectorAll('.tab-bar__item[data-tab]').forEach(btn => {
@@ -113,15 +109,13 @@ export async function navigateTo(tab) {
   });
 
   const content = document.getElementById('main-content');
-  const isMac   = window.innerWidth >= 768;
 
-  if (isMac && ['today','favourites','meals'].includes(tab)) {
+  if (isSidebarTab) {
     await renderWithSidebar(tab, content);
     return;
   }
 
-  // Full content swap (mobile, or Settings/History on Mac)
-  // Tear down mac shell when navigating away from sidebar tabs
+  // Full swap — clear shell state
   if (isMac) macShellRendered = false;
 
   switch (tab) {
@@ -186,7 +180,7 @@ async function renderWithSidebar(tab, content) {
   }
 }
 
-export function refreshSidebar() { renderSidebarSummary(); }
+export function refreshSidebar()   { renderSidebarSummary(); }
 export function notifyDateChange() { updateDatePill(); }
 
 // ── Logout ─────────────────────────────────────────────────────
