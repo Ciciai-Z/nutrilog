@@ -1,6 +1,6 @@
 // ============================================================
 // main.js — 路由初始化
-// Updated: Session 4 (Favourites tab, persistent sidebar, date pill)
+// Updated: Session 4 + Bug fixes (tab switch, layout, date pill)
 // ============================================================
 import { isLoggedIn, renderAuthScreen, logout } from './auth.js';
 import { store } from './store.js';
@@ -10,7 +10,7 @@ import { initLog, renderSidebarSummary } from './log.js';
 import { initSettings } from './settings.js';
 import { initFavourites } from './search.js';
 
-// ── App shell ─────────────────────────────────────────────────
+// ── App shell ──────────────────────────────────────────────────
 function renderAppShell() {
   const app = document.getElementById('app');
   app.innerHTML = `
@@ -52,32 +52,60 @@ function renderAppShell() {
   navigateTo('today');
 }
 
-// ── Date pill ─────────────────────────────────────────────────
+// ── Date pill ──────────────────────────────────────────────────
+// Format: "Mon 23 Mar" — readable, no slashes
+function formatPillDate(dateStr) {
+  if (!dateStr) return '';
+  // dateStr is ddd,d/m/yy  e.g. "Mon,23/3/26"
+  try {
+    const parts = dateStr.replace(/^[^,]+,/, '').split('/'); // ["23","3","26"]
+    const day   = parseInt(parts[0]);
+    const month = parseInt(parts[1]) - 1;
+    const year  = 2000 + parseInt(parts[2]);
+    const d     = new Date(year, month, day);
+    const DOW   = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+    const MON   = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+    return `${DOW[d.getDay()]} ${day} ${MON[month]}`;
+  } catch {
+    return dateStr;
+  }
+}
+
 function updateDatePill() {
   const pill = document.getElementById('nav-date-pill');
   if (!pill) return;
   const d = store.state.currentDate || today();
-  pill.textContent = d;
-  pill.onclick = () => {
-    // On mobile fall back to native date navigation (arrows in log.js)
-    // On Mac this pill is informational only; date changes via log nav arrows
-  };
+  pill.textContent = formatPillDate(d);
+  pill.title = 'Use ‹ › on Today to change date';
 }
 
-// ── Tab bar ───────────────────────────────────────────────────
-let currentTab = null;
+// ── Tab bar ────────────────────────────────────────────────────
+let currentTab  = null;
+let macShellRendered = false;
 
 function setupTabBar() {
   document.getElementById('tab-bar').addEventListener('click', e => {
     const btn = e.target.closest('.tab-bar__item');
     if (!btn) return;
     if (btn.id === 'logout-btn') { handleLogout(); return; }
-    navigateTo(btn.dataset.tab);
+    const tab = btn.dataset.tab;
+    if (!tab) return;
+    // Always allow switching — reset guard when coming from a non-sidebar tab
+    const isMacSidebar = window.innerWidth >= 768 && ['today','favourites','meals'].includes(tab);
+    const wasMacSidebar = window.innerWidth >= 768 && ['today','favourites','meals'].includes(currentTab);
+    // If we're coming from Settings/History/non-sidebar back to a sidebar tab,
+    // we need to rebuild the shell — reset the flag
+    if (isMacSidebar && !wasMacSidebar) {
+      macShellRendered = false;
+    }
+    // Skip re-init only if same tab AND shell is still intact
+    if (currentTab === tab && macShellRendered && document.getElementById('mac-left')) return;
+    if (currentTab === tab && !isMacSidebar) return;
+    navigateTo(tab);
   });
 }
 
 export async function navigateTo(tab) {
-  if (currentTab === tab) return;
   currentTab = tab;
 
   document.querySelectorAll('.tab-bar__item[data-tab]').forEach(btn => {
@@ -85,24 +113,25 @@ export async function navigateTo(tab) {
   });
 
   const content = document.getElementById('main-content');
-  const isMac = window.innerWidth >= 768;
+  const isMac   = window.innerWidth >= 768;
 
-  // On Mac: Today / Favourites / Meals share the persistent sidebar layout.
-  // For those tabs we render a two-column shell; navigateTo only swaps the left column.
-  if (isMac && ['today', 'favourites', 'meals'].includes(tab)) {
+  if (isMac && ['today','favourites','meals'].includes(tab)) {
     await renderWithSidebar(tab, content);
     return;
   }
 
-  // Mobile or non-sidebar tabs: full content swap
+  // Full content swap (mobile, or Settings/History on Mac)
+  // Tear down mac shell when navigating away from sidebar tabs
+  if (isMac) macShellRendered = false;
+
   switch (tab) {
     case 'today':
       content.innerHTML = '<div id="view-today" class="page"></div>';
-      await initLog();
+      await initLog(false);
       break;
     case 'favourites':
       content.innerHTML = '<div id="view-favourites" class="page"></div>';
-      await initFavourites();
+      await initFavourites(false);
       break;
     case 'meals':
       content.innerHTML = placeholderPage('Meals', '🍽', 'Meal templates coming in B8');
@@ -119,16 +148,13 @@ export async function navigateTo(tab) {
   }
 }
 
-// ── Mac two-column: persistent sidebar ───────────────────────
-let macShellRendered = false;
-
+// ── Mac two-column shell ───────────────────────────────────────
 async function renderWithSidebar(tab, content) {
-  // Build shell once
   if (!macShellRendered) {
     content.innerHTML = `
-      <div class="mac-shell" style="display:grid;grid-template-columns:1fr 300px;height:100%;overflow:hidden">
-        <div id="mac-left" style="overflow-y:auto;min-height:0"></div>
-        <div id="mac-sidebar" style="border-left:1px solid var(--color-border);background:var(--color-bg-card);overflow-y:auto;padding:20px 16px 16px;min-height:0;display:flex;flex-direction:column">
+      <div class="mac-shell">
+        <div id="mac-left" class="mac-left"></div>
+        <div id="mac-sidebar" class="mac-sidebar">
           <p class="sidebar-heading">How I'm doing</p>
           <div id="sidebar-summary" class="sidebar-summary"></div>
           <button id="sidebar-save-btn" class="sidebar-save-btn">Save Summary</button>
@@ -140,17 +166,15 @@ async function renderWithSidebar(tab, content) {
     macShellRendered = true;
   }
 
-  // Render sidebar data
   renderSidebarSummary();
 
-  // Swap left column only
   const left = document.getElementById('mac-left');
   if (!left) return;
 
   switch (tab) {
     case 'today':
       left.innerHTML = '<div id="view-today" class="page"></div>';
-      await initLog(true);      // true = mac mode, skip sidebar re-render
+      await initLog(true);
       break;
     case 'favourites':
       left.innerHTML = '<div id="view-favourites" class="page"></div>';
@@ -162,19 +186,17 @@ async function renderWithSidebar(tab, content) {
   }
 }
 
-// Called by log.js / search.js whenever data changes
-export function refreshSidebar() {
-  renderSidebarSummary();
-}
+export function refreshSidebar() { renderSidebarSummary(); }
+export function notifyDateChange() { updateDatePill(); }
 
-// ── Logout ────────────────────────────────────────────────────
+// ── Logout ─────────────────────────────────────────────────────
 function handleLogout() {
-  currentTab = null;
+  currentTab       = null;
   macShellRendered = false;
   logout();
 }
 
-// ── Placeholder ───────────────────────────────────────────────
+// ── Placeholder ────────────────────────────────────────────────
 function placeholderPage(title, icon, note) {
   return `
     <div class="page">
@@ -188,7 +210,7 @@ function placeholderPage(title, icon, note) {
     </div>`;
 }
 
-// ── Login init ────────────────────────────────────────────────
+// ── Login init ─────────────────────────────────────────────────
 async function onLogin() {
   store.setCurrentDate(today());
   try {
