@@ -934,3 +934,319 @@ ul { list-style: none; }
 .log-date-nav,
 .log-date-pill,
 .log-mac-date-nav { display: none !important; }
+/* ============================================================
+   patch.css — append to end of main.css
+   Covers ALL session 5 fixes
+============================================================ */
+
+/* ── 1. Nav date picker — full label area is clickable ───────── */
+.nav-date-wrap {
+  position: relative;
+  margin-left: auto;
+  margin-right: 4px;
+  display: inline-flex;
+  align-items: center;
+  cursor: pointer;
+}
+.nav-date-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  background: var(--color-bg-page);
+  border: .5px solid var(--color-border);
+  border-radius: 20px;
+  padding: 4px 12px;
+  font-size: 12px;
+  font-weight: 500;
+  font-family: var(--font-sans);
+  color: var(--color-text-primary);
+  white-space: nowrap;
+  letter-spacing: .01em;
+  transition: background .12s, border-color .12s;
+  pointer-events: none; /* clicks go to the label */
+}
+.nav-date-pill::before { content: '📅'; font-size: 11px; }
+.nav-date-wrap:hover .nav-date-pill {
+  background: var(--color-accent-light);
+  border-color: var(--color-accent);
+  color: var(--color-accent-dark);
+}
+/* Hidden native input fills the entire label */
+.nav-date-input {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  width: 100%;
+  height: 100%;
+  cursor: pointer;
+  z-index: 2;
+  font-size: 16px;
+}
+@media (max-width: 767px) {
+  .nav-date-pill { font-size: 10px; padding: 3px 8px; }
+}
+
+/* ── 2. Mac search bar — 3× wider ────────────────────────────── */
+@media (min-width: 768px) {
+  .mac-search-pill-wrap { flex-shrink: 0; }
+  .mac-search-pill { width: 480px; min-width: 480px; }
+  .mac-search-pill--expanded { width: 520px; min-width: 520px; }
+  .mac-search-dropdown { width: 520px; min-width: 520px; }
+}
+
+/* ── 3. Mac search dropdown — fav button + nutrition preview ─── */
+.mac-search-dropdown-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 12px;
+  cursor: pointer;
+  border-radius: 6px;
+  transition: background .1s;
+}
+.mac-search-dropdown-row:hover { background: var(--color-accent-light); }
+.mac-search-dropdown-row--selected { background: var(--color-accent-light); }
+
+.mac-dd-fav-btn {
+  flex-shrink: 0;
+  background: none;
+  border: none;
+  font-size: 14px;
+  cursor: pointer;
+  color: var(--color-border);
+  padding: 0;
+  line-height: 1;
+  transition: color .12s, transform .1s;
+}
+.mac-dd-fav-btn:hover          { color: var(--color-accent); transform: scale(1.2); }
+.mac-dd-fav-btn--active        { color: var(--color-accent) !important; }
+
+.mac-search-drow__name { flex: 1; font-size: 13px; color: var(--color-text-primary); }
+.mac-search-drow__meta { font-size: 11px; color: var(--color-text-secondary); white-space: nowrap; }
+
+/* Nutrition preview row below add-bar */
+.mac-add-nutrition-preview {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 8px 12px 10px;
+  border-top: .5px solid var(--color-border);
+}
+.mac-nut-chip {
+  background: var(--color-accent-light);
+  color: var(--color-accent-dark);
+  border-radius: 6px;
+  padding: 3px 8px;
+  font-size: 11px;
+  font-weight: 500;
+  font-family: var(--font-sans);
+}
+
+/* ── 4. Entry row — new layout: name | kcal P C F Fi | g ★ ✕ ── */
+.entry-row { border-bottom: .5px solid var(--color-border); }
+.entry-row:last-child { border-bottom: none; }
+
+.entry-row__main {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  background: var(--color-bg-card);
+  transition: background .1s;
+}
+.entry-row__main:hover { background: #fafaf8; }
+
+.entry-row__left {
+  flex: 1;
+  min-width: 0;
+}
+.entry-row__name {
+  display: block;
+  font-size: .87rem;
+  font-weight: 500;
+  color: var(--color-text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  margin-bottom: 3px;
+}
+.entry-row__macros {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  font-size: .72rem;
+  color: var(--color-text-secondary);
+}
+.entry-row__cals {
+  font-weight: 500;
+  color: var(--color-text-primary);
+}
+
+.entry-row__right {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  flex-shrink: 0;
+}
+
+.entry-row__amount-btn {
+  background: var(--color-accent-light);
+  color: var(--color-accent-dark);
+  border: .5px solid var(--color-accent);
+  border-radius: 5px;
+  padding: 2px 7px;
+  font-size: .75rem;
+  font-weight: 500;
+  font-family: var(--font-sans);
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background .12s;
+}
+.entry-row__amount-btn:hover { background: var(--color-accent); color: #fff; }
+
+.entry-row__star-btn {
+  width: 26px; height: 26px;
+  background: transparent; border: none;
+  font-size: 14px; cursor: pointer;
+  color: var(--color-border);
+  transition: color .12s, transform .1s;
+  display: flex; align-items: center; justify-content: center;
+  padding: 0; border-radius: 50%;
+}
+.entry-row__star-btn:hover { color: var(--color-accent); transform: scale(1.15); }
+.entry-row__star-btn--active { color: var(--color-accent) !important; }
+
+/* On Mac: star is hidden until hover (unless active) */
+@media (min-width: 768px) {
+  .entry-row__star-btn:not(.entry-row__star-btn--active) { opacity: 0; }
+  .entry-row__main:hover .entry-row__star-btn { opacity: 1; }
+}
+@media (max-width: 767px) {
+  .entry-row__star-btn { opacity: 0.5; }
+  .entry-row__star-btn--active { opacity: 1; }
+}
+
+.entry-row__delete-btn {
+  width: 24px; height: 24px;
+  background: transparent; border: none;
+  font-size: 12px; cursor: pointer;
+  color: var(--color-text-secondary);
+  opacity: 0.35;
+  transition: opacity .12s, color .12s;
+  display: flex; align-items: center; justify-content: center;
+  padding: 0; border-radius: 50%;
+}
+.entry-row__main:hover .entry-row__delete-btn { opacity: 1; }
+.entry-row__delete-btn:hover { color: var(--color-error); }
+@media (max-width: 767px) {
+  .entry-row__delete-btn { opacity: 0.5; width: 28px; height: 28px; font-size: 13px; }
+}
+
+/* ── 5. Meal section macros — visible on ALL devices ─────────── */
+.meal-section__macros {
+  display: flex !important;  /* override old mobile hide */
+  flex-wrap: wrap;
+  gap: 4px;
+  align-items: center;
+}
+.meal-section__macro-item {
+  font-size: 11px;
+  color: var(--color-text-secondary);
+  white-space: nowrap;
+}
+@media (max-width: 767px) {
+  .meal-section__macros { gap: 3px; }
+  .meal-section__macro-item { font-size: 10px; }
+  .meal-section__name { font-size: 13px; }
+}
+
+/* ── 6. Macro strip actual/target format ─────────────────────── */
+.iphone-macro-chip__val {
+  font-size: 10px; font-weight: 500;
+  font-family: var(--font-sans);
+  display: block; line-height: 1.2;
+}
+.chip-target { font-weight: 400; color: var(--color-text-secondary); font-size: 9px; }
+.iphone-macro-chip--warn   { border-color: #B7711A; background: #FFF8ED; }
+.iphone-macro-chip--danger { border-color: #C0392B; background: #FFF0EE; }
+.iphone-macro-chip__fill--warn   { background: #B7711A !important; }
+.iphone-macro-chip__fill--danger { background: #C0392B !important; }
+.iphone-macro-chip--warn   .iphone-macro-chip__val { color: #B7711A; }
+.iphone-macro-chip--danger .iphone-macro-chip__val { color: #C0392B; }
+
+/* ── 7. Add sheet dynamic preview chips ─────────────────────── */
+.add-sheet-preview {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 14px;
+  flex-wrap: wrap;
+}
+.add-sheet-chip {
+  background: var(--color-accent-light);
+  border-radius: 7px;
+  padding: 5px 9px;
+  text-align: center;
+  min-width: 44px;
+  flex: 1;
+}
+.add-sheet-chip__label { font-size: 10px; color: var(--color-text-secondary); }
+.add-sheet-chip__val   { font-size: 13px; font-weight: 500; color: var(--color-accent-dark); }
+
+/* ── 8. Favourites page — star remove button ────────────────── */
+.favs-row__star-btn {
+  flex-shrink: 0;
+  background: none;
+  border: none;
+  font-size: 16px;
+  cursor: pointer;
+  color: var(--color-accent);
+  padding: 0 4px 0 0;
+  line-height: 1;
+  transition: transform .12s, opacity .12s;
+}
+.favs-row__star-btn:hover { transform: scale(1.15); opacity: 0.7; }
+.favs-row__star-btn--active { color: var(--color-accent); }
+
+/* ── 9. Touch drag — drop target highlight ──────────────────── */
+.meal-section--drop-target {
+  outline: 1px dashed var(--color-accent);
+  outline-offset: 2px;
+  background: rgba(105,122,88,.05);
+}
+.meal-section--drag-over {
+  outline: 2px dashed var(--color-accent);
+  outline-offset: 2px;
+  background: var(--color-accent-light);
+}
+
+/* ── 10. Context menu (Mac right-click) ─────────────────────── */
+.ctx-move-menu {
+  background: var(--color-bg-card);
+  border: .5px solid var(--color-border);
+  border-radius: 10px;
+  padding: 6px 0;
+  box-shadow: 0 8px 24px rgba(0,0,0,.14);
+  min-width: 160px;
+}
+.ctx-move-menu__title {
+  font-size: 11px; color: var(--color-text-secondary);
+  padding: 4px 12px 8px; font-weight: 500;
+  text-transform: uppercase; letter-spacing: .04em;
+}
+.ctx-move-menu__item {
+  display: block; width: 100%;
+  padding: 7px 14px; text-align: left;
+  font-size: var(--text-sm); color: var(--color-text-primary);
+  background: none; border: none; cursor: pointer;
+}
+.ctx-move-menu__item:hover { background: var(--color-accent-light); color: var(--color-accent-dark); }
+
+/* ── 11. Sidebar bar colors ──────────────────────────────────── */
+.sidebar-bar__fill--warning { background: #B7711A !important; }
+.sidebar-bar__fill--danger  { background: #C0392B !important; }
+
+/* ── 12. Remove any leftover duplicate date navs ────────────── */
+.log-date-nav,
+.log-date-pill,
+.log-mac-date-nav,
+.log-nav-btn { display: none !important; }

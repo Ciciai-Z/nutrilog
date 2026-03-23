@@ -1,6 +1,6 @@
 // ============================================================
 // main.js — Router
-// Fixed: date pill → date picker (any date), no duplicate date display
+// Fixed: date picker covers full pill area, clean nav-bar
 // ============================================================
 import { isLoggedIn, renderAuthScreen, logout } from './auth.js';
 import { store } from './store.js';
@@ -10,7 +10,6 @@ import { initLog, renderSidebarSummary } from './log.js';
 import { initSettings } from './settings.js';
 import { initFavourites } from './search.js';
 
-// ── App shell ──────────────────────────────────────────────────
 function renderAppShell() {
   const app = document.getElementById('app');
   app.innerHTML = `
@@ -39,11 +38,11 @@ function renderAppShell() {
           <span class="tab-bar__icon">⚙️</span>
           <span class="tab-bar__label">Settings</span>
         </button>
-        <!-- Date pill — clickable date picker -->
-        <div class="nav-date-wrap" id="nav-date-wrap">
-          <button class="nav-date-pill" id="nav-date-pill" title="Change date"></button>
+        <!-- Date picker — full-area clickable pill -->
+        <label class="nav-date-wrap" id="nav-date-wrap" title="Change date">
+          <span class="nav-date-pill" id="nav-date-pill"></span>
           <input type="date" id="nav-date-input" class="nav-date-input" aria-label="Select date">
-        </div>
+        </label>
         <button class="tab-bar__item tab-bar__item--logout" id="logout-btn">
           <span class="tab-bar__icon">🔓</span>
           <span class="tab-bar__label">Logout</span>
@@ -55,7 +54,7 @@ function renderAppShell() {
   navigateTo('today');
 }
 
-// ── Date picker ────────────────────────────────────────────────
+// ── Date helpers ───────────────────────────────────────────────
 function internalToISO(dateStr) {
   if (!dateStr) return '';
   try {
@@ -85,8 +84,7 @@ function formatPillDisplay(dateStr) {
     const d     = new Date(year, month, day);
     const DOW = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
     const MON = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
-    const isToday = dateStr === today();
-    return isToday
+    return dateStr === today()
       ? `Today · ${DOW[d.getDay()]}, ${day} ${MON[month]}`
       : `${DOW[d.getDay()]}, ${day} ${MON[month]}`;
   } catch { return dateStr; }
@@ -102,16 +100,9 @@ function updateDatePill() {
 }
 
 function setupDatePicker() {
-  const pill  = document.getElementById('nav-date-pill');
   const input = document.getElementById('nav-date-input');
-  if (!pill || !input) return;
-
+  if (!input) return;
   updateDatePill();
-
-  pill.addEventListener('click', () => {
-    input.showPicker?.() || input.click();
-  });
-
   input.addEventListener('change', async () => {
     const iso = input.value;
     if (!iso) return;
@@ -119,23 +110,15 @@ function setupDatePicker() {
     if (!newDate || newDate === store.state.currentDate) return;
     store.setCurrentDate(newDate);
     updateDatePill();
-
-    // Reload log for selected date if on Today tab
     if (currentTab === 'today') {
       const isMac = window.innerWidth >= 768;
       const { initLog } = await import('./log.js');
       if (isMac) {
         const left = document.getElementById('mac-left');
-        if (left) {
-          left.innerHTML = '<div id="view-today" class="page"></div>';
-          await initLog(true);
-        }
+        if (left) { left.innerHTML='<div id="view-today" class="page"></div>'; await initLog(true); }
       } else {
         const content = document.getElementById('main-content');
-        if (content) {
-          content.innerHTML = '<div id="view-today" class="page"></div>';
-          await initLog(false);
-        }
+        if (content) { content.innerHTML='<div id="view-today" class="page"></div>'; await initLog(false); }
       }
     }
     console.log('[main] date changed →', newDate);
@@ -162,15 +145,12 @@ export async function navigateTo(tab) {
   const isSidebarTab = isMac && ['today','favourites','meals'].includes(tab);
   const wasSidebarTab= isMac && ['today','favourites','meals'].includes(currentTab);
 
-  // Skip re-init: same sidebar tab with shell intact
   if (tab === currentTab && isSidebarTab && document.getElementById('mac-left')) return;
-  // Skip re-init: same non-sidebar tab (except settings)
   if (tab === currentTab && !isSidebarTab && tab !== 'settings') {
     document.querySelectorAll('.tab-bar__item[data-tab]').forEach(btn =>
       btn.classList.toggle('tab-bar__item--active', btn.dataset.tab === tab));
     return;
   }
-
   if (isSidebarTab && !wasSidebarTab) macShellRendered = false;
 
   currentTab = tab;
@@ -182,25 +162,15 @@ export async function navigateTo(tab) {
   if (isMac) macShellRendered = false;
 
   switch (tab) {
-    case 'today':
-      content.innerHTML = '<div id="view-today" class="page"></div>';
-      await initLog(false); break;
-    case 'favourites':
-      content.innerHTML = '<div id="view-favourites" class="page"></div>';
-      await initFavourites(false); break;
-    case 'meals':
-      content.innerHTML = placeholderPage('Meals','🍽','Meal templates coming in B8'); break;
-    case 'history':
-      content.innerHTML = placeholderPage('History','📅','History coming in B9'); break;
-    case 'settings':
-      content.innerHTML = '<div id="view-settings" class="page"></div>';
-      initSettings(); break;
-    default:
-      content.innerHTML = placeholderPage(tab,'🔧',`${tab} coming soon`);
+    case 'today':      content.innerHTML='<div id="view-today" class="page"></div>'; await initLog(false); break;
+    case 'favourites': content.innerHTML='<div id="view-favourites" class="page"></div>'; await initFavourites(false); break;
+    case 'meals':      content.innerHTML=placeholderPage('Meals','🍽','Meal templates coming in B8'); break;
+    case 'history':    content.innerHTML=placeholderPage('History','📅','History coming in B9'); break;
+    case 'settings':   content.innerHTML='<div id="view-settings" class="page"></div>'; initSettings(); break;
+    default:           content.innerHTML=placeholderPage(tab,'🔧',`${tab} coming soon`);
   }
 }
 
-// ── Mac two-column shell ───────────────────────────────────────
 async function renderWithSidebar(tab, content) {
   if (!macShellRendered) {
     content.innerHTML = `
@@ -217,24 +187,12 @@ async function renderWithSidebar(tab, content) {
     });
     macShellRendered = true;
   }
-
   const left = document.getElementById('mac-left');
   if (!left) return;
-
   switch (tab) {
-    case 'today':
-      left.innerHTML = '<div id="view-today" class="page"></div>';
-      await initLog(true);
-      break;
-    case 'favourites':
-      left.innerHTML = '<div id="view-favourites" class="page"></div>';
-      renderSidebarSummary();
-      await initFavourites(true);
-      break;
-    case 'meals':
-      left.innerHTML = placeholderPage('Meals','🍽','Meal templates coming in B8');
-      renderSidebarSummary();
-      break;
+    case 'today':      left.innerHTML='<div id="view-today" class="page"></div>'; await initLog(true); break;
+    case 'favourites': left.innerHTML='<div id="view-favourites" class="page"></div>'; renderSidebarSummary(); await initFavourites(true); break;
+    case 'meals':      left.innerHTML=placeholderPage('Meals','🍽','Meal templates coming in B8'); renderSidebarSummary(); break;
   }
 }
 
@@ -242,39 +200,27 @@ export function refreshSidebar()   { renderSidebarSummary(); }
 export function notifyDateChange() { updateDatePill(); }
 
 function handleLogout() {
-  currentTab = null; macShellRendered = false;
-  store.state.foods      = null;
-  store.state.favourites = null;
-  store.state.dailyLog   = {};
-  store.state.settings   = null;
+  currentTab=null; macShellRendered=false;
+  store.state.foods=null; store.state.favourites=null;
+  store.state.dailyLog={}; store.state.settings=null;
   logout();
 }
 
 function placeholderPage(title, icon, note) {
-  return `<div class="page">
-    <header class="page-header"><h2 class="page-header__title">${title}</h2></header>
-    <div class="page-placeholder">
-      <span class="page-placeholder__icon">${icon}</span>
-      <p class="page-placeholder__text">${note}</p>
-    </div></div>`;
+  return `<div class="page"><header class="page-header"><h2 class="page-header__title">${title}</h2></header>
+    <div class="page-placeholder"><span class="page-placeholder__icon">${icon}</span>
+    <p class="page-placeholder__text">${note}</p></div></div>`;
 }
 
-// ── Login ──────────────────────────────────────────────────────
 async function onLogin() {
   store.setCurrentDate(today());
-  try {
-    const settings = await getSettings();
-    store.setSettings(settings);
-    console.log('[main] settings loaded');
-  } catch (ex) {
-    console.error('[main] failed to load settings:', ex.message);
-  }
+  try { const s=await getSettings(); store.setSettings(s); console.log('[main] settings loaded'); }
+  catch (ex) { console.error('[main] settings failed:', ex.message); }
   renderAppShell();
-  // Preload foods + favourites in background
   Promise.all([
-    import('./search.js').then(m => m.ensureFoodsLoaded()),
-    import('./search.js').then(m => m.ensureFavouritesLoaded?.()),
-  ]).catch(err => console.warn('[main] preload failed:', err.message));
+    import('./search.js').then(m=>m.ensureFoodsLoaded()),
+    import('./search.js').then(m=>m.ensureFavouritesLoaded?.()),
+  ]).catch(err=>console.warn('[main] preload:', err.message));
 }
 
 window.addEventListener('nutrilog:login', onLogin);

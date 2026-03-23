@@ -1,6 +1,6 @@
 // ============================================================
 // search.js — Food Search + Favourites
-// Fixed: export ensureFavouritesLoaded for preloading
+// Fixed: fav toggle on favs page, dynamic nutrition preview in add sheet
 // ============================================================
 import { CONFIG } from '../config.js';
 import { getFavourites, toggleFavourite, addLogEntry } from './api.js';
@@ -20,8 +20,8 @@ export async function ensureFoodsLoaded() {
     store.state.foods = await searchFoods('');
     console.log(`[search] loaded ${store.state.foods.length} foods`);
   } catch (err) {
-    console.error('[search] ensureFoodsLoaded →', err);
-    showToast('Failed to load food database', 'error');
+    console.error('[search] ensureFoodsLoaded:', err);
+    showToast('Failed to load food database','error');
   }
 }
 
@@ -31,7 +31,7 @@ export async function ensureFavouritesLoaded() {
     const ids = await getFavourites();
     store.state.favourites = new Set(ids);
   } catch (err) {
-    console.error('[search] ensureFavouritesLoaded →', err);
+    console.error('[search] ensureFavouritesLoaded:', err);
     store.state.favourites = new Set();
   }
 }
@@ -56,15 +56,11 @@ export async function openSearchSheet() {
     </div>`;
   document.body.appendChild(sheet);
   requestAnimationFrame(() => sheet.classList.add('bottom-sheet--visible'));
-
   sheet.querySelector('.bottom-sheet__backdrop').addEventListener('click', closeMobileSheet);
 
   const input = document.getElementById('mobile-sheet-input');
-  // Small delay so backdrop animation finishes before keyboard opens
   setTimeout(() => input?.focus(), 80);
   input?.addEventListener('input', () => runSheetSearch(input.value));
-
-  // Show starred foods immediately (already in memory)
   runSheetSearch('');
 }
 
@@ -79,36 +75,28 @@ async function runSheetSearch(rawQuery) {
   const q     = rawQuery.trim().toLowerCase();
   const foods = store.state.foods || [];
   const favSet= store.state.favourites || new Set();
-
   let filtered = !q
     ? foods.filter(f => favSet.has(f.no))
     : foods.filter(f => f.name.toLowerCase().includes(q));
-
-  filtered.sort((a, b) => {
-    const af = favSet.has(a.no) ? 0 : 1;
-    const bf = favSet.has(b.no) ? 0 : 1;
-    return af !== bf ? af - bf : a.name.localeCompare(b.name);
+  filtered.sort((a,b) => {
+    const af=favSet.has(a.no)?0:1, bf=favSet.has(b.no)?0:1;
+    return af!==bf ? af-bf : a.name.localeCompare(b.name);
   });
-
   const container = document.getElementById('mobile-sheet-results');
   if (!container) return;
-
   const results = filtered.slice(0, CONFIG.search.maxResults);
   if (!results.length) {
-    container.innerHTML = `<p class="search-empty">${q ? `No results for "${escapeHtml(q)}"` : 'Search for a food'}</p>`;
+    container.innerHTML = `<p class="search-empty">${q?`No results for "${escHtml(q)}"` : 'Search for a food'}</p>`;
     return;
   }
-
   container.innerHTML = results.map(f => renderFoodRow(f, q)).join('');
   container.querySelectorAll('.search-result-row').forEach(row => {
     const no = Number(row.dataset.foodNo);
     row.querySelector('.result-info')?.addEventListener('click', () => {
-      closeMobileSheet();
-      openAddSheet(no);
+      closeMobileSheet(); openAddSheet(no);
     });
     row.querySelector('.fav-btn')?.addEventListener('click', e => {
-      e.stopPropagation();
-      handleToggleFavourite(no, row);
+      e.stopPropagation(); handleToggleFavourite(no, row);
     });
   });
 }
@@ -136,7 +124,7 @@ function renderFavouritesPage() {
   });
 
   const groupsHTML = Object.entries(groups).map(([cat, foods]) => `
-    <div class="favs-section-label">${escapeHtml(cat)}</div>
+    <div class="favs-section-label">${escHtml(cat)}</div>
     <div class="favs-group">
       ${foods.map(f => renderFavRow(f)).join('')}
     </div>`).join('');
@@ -145,13 +133,12 @@ function renderFavouritesPage() {
     <div class="favs-page">
       <div class="favs-page-header">
         <h2 style="font-family:var(--font-serif);font-size:var(--text-xl);font-weight:400;font-style:italic;color:var(--color-text-primary)">Favourites</h2>
-        <span class="favs-hint">Click a food to add</span>
+        <span class="favs-hint">Click to add to log · ★ to unfavourite</span>
       </div>
       ${favFoods.length === 0
-        ? '<p class="search-empty" style="margin-top:40px">Star foods in Search to add them here</p>'
+        ? '<p class="search-empty" style="margin-top:40px">No favourites yet — star foods in Search</p>'
         : groupsHTML}
     </div>`;
-
   bindFavouritesEvents(view);
 }
 
@@ -160,10 +147,10 @@ function renderFavRow(food) {
   return `
     <div class="favs-row" data-food-no="${food.no}">
       <div class="favs-row__top">
-        <svg class="favs-row__star" viewBox="0 0 12 12" fill="var(--color-accent)" stroke="var(--color-accent)" stroke-width="0.5">
-          <path d="M6 .5l1.3 2.8 3 .4-2.2 2.1.5 3L6 7.5l-2.6 1.3.5-3L1.7 3.7l3-.4z"/>
-        </svg>
-        <span class="favs-row__name">${escapeHtml(food.name)}</span>
+        <!-- Star button: click to remove from favourites -->
+        <button class="favs-row__star-btn favs-row__star-btn--active" data-food-no="${food.no}"
+          title="Remove from favourites" aria-label="Remove from favourites">★</button>
+        <span class="favs-row__name">${escHtml(food.name)}</span>
         <span class="favs-row__meta">${food.amount}${food.unit}</span>
         <span class="favs-row__cal">${cals} cal</span>
       </div>
@@ -177,7 +164,8 @@ function buildExpandPanel(food, cals) {
   const options = CONFIG.labels.mealTypes.map(t => `<option>${t}</option>`).join('');
   return `
     <div class="favs-expand-inner" data-food-no="${food.no}">
-      <div class="favs-expand__macros">
+      <!-- Dynamic nutrition preview (updates with amount changes) -->
+      <div class="favs-expand__macros" id="favs-macros-${food.no}">
         <span class="favs-expand__macro"><strong>${cals}</strong> cal</span>
         <span class="favs-expand__macro">P <strong>${food.protein.toFixed(1)}g</strong></span>
         <span class="favs-expand__macro">C <strong>${food.carbs.toFixed(1)}g</strong></span>
@@ -187,92 +175,143 @@ function buildExpandPanel(food, cals) {
       <div class="favs-expand__divider"></div>
       <input class="favs-expand__input" type="number"
         value="${store.state.lastAmounts?.[food.no] || food.amount}"
-        min="1" step="1" data-base="${food.amount}" aria-label="Amount">
+        min="1" step="1" data-base="${food.amount}"
+        data-food-no="${food.no}" aria-label="Amount"
+        style="font-size:16px">
       <span class="favs-expand__unit">${food.unit}</span>
-      <select class="favs-expand__select">${options}</select>
-      <span class="favs-expand__cal" data-cal-preview></span>
-      <button class="favs-expand__btn" data-add-btn>+ Add</button>
+      <select class="favs-expand__select" style="font-size:16px">${options}</select>
+      <button class="favs-expand__btn" data-add-btn data-food-no="${food.no}">+ Add</button>
     </div>`;
 }
 
 function bindFavouritesEvents(view) {
   let openNo = null;
+
   view.querySelectorAll('.favs-row').forEach(row => {
     const no = Number(row.dataset.foodNo);
-    row.querySelector('.favs-row__top').addEventListener('click', () => {
+
+    // Star button: remove from favourites (optimistic)
+    row.querySelector('.favs-row__star-btn')?.addEventListener('click', async e => {
+      e.stopPropagation();
+      await removeFavourite(no, row);
+    });
+
+    // Click row top area to expand/collapse
+    row.querySelector('.favs-row__top')?.addEventListener('click', e => {
+      if (e.target.closest('.favs-row__star-btn')) return; // handled above
       if (openNo && openNo !== no) {
         view.querySelector(`.favs-row[data-food-no="${openNo}"]`)?.classList.remove('favs-row--selected');
         openNo = null;
       }
       if (row.classList.contains('favs-row--selected')) {
-        row.classList.remove('favs-row--selected');
-        openNo = null;
+        row.classList.remove('favs-row--selected'); openNo = null;
       } else {
-        row.classList.add('favs-row--selected');
-        openNo = no;
-        updateExpandCalPreview(row, no);
+        row.classList.add('favs-row--selected'); openNo = no;
+        updateFavExpandPreview(row, no);
       }
     });
-    row.querySelector('.favs-expand__input')?.addEventListener('input', () => updateExpandCalPreview(row, no));
+
+    // Amount input → live nutrition preview
+    row.querySelector('.favs-expand__input')?.addEventListener('input', () => updateFavExpandPreview(row, no));
+
+    // Add button
     row.querySelector('[data-add-btn]')?.addEventListener('click', () => handleFavAdd(row, no));
   });
 }
 
-function updateExpandCalPreview(row, no) {
-  const food = (store.state.foods || []).find(f => f.no === no);
+async function removeFavourite(foodNo, rowEl) {
+  const fs = store.state.favourites;
+  // Optimistic: remove from set
+  if (fs instanceof Set) fs.delete(foodNo);
+  else if (Array.isArray(fs)) store.state.favourites = fs.filter(n=>n!==foodNo);
+  // Animate out
+  rowEl.style.transition = 'opacity 0.2s,max-height 0.25s';
+  rowEl.style.opacity = '0';
+  rowEl.style.maxHeight = rowEl.offsetHeight + 'px';
+  setTimeout(() => { rowEl.style.maxHeight='0'; rowEl.style.overflow='hidden'; }, 10);
+  setTimeout(() => {
+    rowEl.remove();
+    // Re-render page if no more items
+    const remaining = (store.state.foods||[]).filter(f=>{
+      const s=store.state.favourites;
+      return s instanceof Set ? s.has(f.no) : Array.isArray(s) && s.includes(f.no);
+    });
+    if (remaining.length === 0) renderFavouritesPage();
+  }, 260);
+  try {
+    await toggleFavourite(foodNo);
+    showToast('Removed from favourites','success');
+  } catch (err) {
+    console.error('[search] removeFavourite:', err);
+    showToast('Failed to update','error');
+    // Restore
+    if (fs instanceof Set) fs.add(foodNo);
+    renderFavouritesPage();
+  }
+}
+
+// Live nutrition preview for favourites expand panel
+function updateFavExpandPreview(row, no) {
+  const food = (store.state.foods||[]).find(f=>f.no===no);
   if (!food) return;
   const amtInput = row.querySelector('.favs-expand__input');
-  const calSpan  = row.querySelector('[data-cal-preview]');
-  if (!amtInput || !calSpan) return;
+  const macrosEl = row.querySelector(`#favs-macros-${no}`) || row.querySelector('.favs-expand__macros');
+  if (!amtInput || !macrosEl) return;
   const amount = parseFloat(amtInput.value) || food.amount;
-  const ratio  = amount / food.amount;
-  calSpan.textContent = `= ${Math.round(calcCalories(food.protein, food.carbs, food.fat) * ratio)} cal`;
+  const ratio  = amount / (food.amount || 100);
+  const cals   = Math.round(calcCalories(food.protein, food.carbs, food.fat) * ratio);
+  macrosEl.innerHTML = `
+    <span class="favs-expand__macro"><strong>${cals}</strong> cal</span>
+    <span class="favs-expand__macro">P <strong>${((food.protein||0)*ratio).toFixed(1)}g</strong></span>
+    <span class="favs-expand__macro">C <strong>${((food.carbs||0)*ratio).toFixed(1)}g</strong></span>
+    <span class="favs-expand__macro">F <strong>${((food.fat||0)*ratio).toFixed(1)}g</strong></span>
+    <span class="favs-expand__macro">Fi <strong>${((food.fibre||0)*ratio).toFixed(1)}g</strong></span>`;
 }
 
 async function handleFavAdd(row, no) {
-  const food   = (store.state.foods || []).find(f => f.no === no);
-  if (!food) return;
+  const food   = (store.state.foods||[]).find(f=>f.no===no); if (!food) return;
   const amtInput = row.querySelector('.favs-expand__input');
   const mealSel  = row.querySelector('.favs-expand__select');
   const addBtn   = row.querySelector('[data-add-btn]');
   const amount   = parseFloat(amtInput?.value) || food.amount;
   const mealType = mealSel?.value || 'Breakfast';
-  if (!amount || amount <= 0) { showToast('Enter a valid amount','error'); return; }
+  if (!amount||amount<=0) { showToast('Enter a valid amount','error'); return; }
   if (addBtn) { addBtn.disabled=true; addBtn.textContent='…'; }
   try {
-    const date  = store.state.currentDate || today();
-    const ratio = amount / food.amount;
+    const date  = store.state.currentDate||today();
+    const ratio = amount/(food.amount||100);
     await addLogEntry({ date, mealType, foodNo:food.no, name:food.name, amount, unit:food.unit,
-      calories:  Math.round(calcCalories(food.protein, food.carbs, food.fat) * ratio),
-      protein:   Math.round(food.protein   * ratio * 10) / 10,
-      carbs:     Math.round(food.carbs     * ratio * 10) / 10,
-      fat:       Math.round(food.fat       * ratio * 10) / 10,
-      fibre:     Math.round((food.fibre||0)* ratio * 10) / 10,
-      sodium:    Math.round((food.sodium||0)   * ratio),
-      potassium: Math.round((food.potassium||0)* ratio),
+      calories:  Math.round(calcCalories(food.protein,food.carbs,food.fat)*ratio),
+      protein:   Math.round(food.protein  *ratio*10)/10,
+      carbs:     Math.round(food.carbs    *ratio*10)/10,
+      fat:       Math.round(food.fat      *ratio*10)/10,
+      fibre:     Math.round((food.fibre||0)*ratio*10)/10,
+      sodium:    Math.round((food.sodium||0)*ratio),
+      potassium: Math.round((food.potassium||0)*ratio),
     });
-    if (!store.state.lastAmounts) store.state.lastAmounts = {};
+    if (!store.state.lastAmounts) store.state.lastAmounts={};
     store.state.lastAmounts[no] = amount;
     invalidateLogCache(date);
     const { getDailyLog } = await import('./api.js');
     store.state.dailyLog[date] = await getDailyLog(date);
     renderSidebarSummary(store.state.dailyLog[date]);
     row.classList.remove('favs-row--selected');
-    showToast(`${food.name} added ✓`, 'success');
+    showToast(`${food.name} added ✓`,'success');
+    console.log(`[search] handleFavAdd → food=${no} amount=${amount} meal=${mealType}`);
   } catch (err) {
-    console.error('[search] handleFavAdd →', err);
-    showToast('Failed to add', 'error');
+    console.error('[search] handleFavAdd:', err);
+    showToast('Failed to add','error');
   } finally {
     if (addBtn) { addBtn.disabled=false; addBtn.textContent='+ Add'; }
   }
 }
 
-// ── Shared row renderer ───────────────────────────────────────
+// ── Shared food row renderer ──────────────────────────────────
 function renderFoodRow(food, q) {
-  const favSet = store.state.favourites || new Set();
+  const favSet = store.state.favourites||new Set();
   const isFav  = favSet.has(food.no);
   const cals   = calcCalories(food.protein, food.carbs, food.fat);
-  const hl     = q ? highlightMatch(food.name, q) : escapeHtml(food.name);
+  const hl     = q ? highlightMatch(food.name, q) : escHtml(food.name);
   return `
     <div class="search-result-row" data-food-no="${food.no}" role="listitem">
       <button class="fav-btn ${isFav?'fav-btn--active':''}"
@@ -287,48 +326,46 @@ function renderFoodRow(food, q) {
 
 function highlightMatch(name, q) {
   const idx = name.toLowerCase().indexOf(q.toLowerCase());
-  if (idx === -1) return escapeHtml(name);
-  return escapeHtml(name.slice(0, idx))
-    + `<mark class="search-highlight">${escapeHtml(name.slice(idx, idx + q.length))}</mark>`
-    + escapeHtml(name.slice(idx + q.length));
+  if (idx === -1) return escHtml(name);
+  return escHtml(name.slice(0,idx))
+    + `<mark class="search-highlight">${escHtml(name.slice(idx,idx+q.length))}</mark>`
+    + escHtml(name.slice(idx+q.length));
 }
 
-// ── Add sheet (iPhone bottom sheet) ──────────────────────────
+// ── Add sheet (iPhone bottom sheet) with dynamic preview ─────
 function openAddSheet(foodNo) {
-  const food = (store.state.foods || []).find(f => f.no === foodNo);
-  if (!food) return;
+  const food = (store.state.foods||[]).find(f=>f.no===foodNo); if (!food) return;
   document.getElementById('add-food-sheet')?.remove();
   const sheet = document.createElement('div');
-  sheet.id = 'add-food-sheet';
-  sheet.className = 'bottom-sheet';
+  sheet.id = 'add-food-sheet'; sheet.className = 'bottom-sheet';
   sheet.innerHTML = buildAddSheetHTML(food);
   document.body.appendChild(sheet);
   requestAnimationFrame(() => sheet.classList.add('bottom-sheet--visible'));
   sheet.querySelector('#add-sheet-cancel')?.addEventListener('click', closeAddSheet);
   sheet.querySelector('#add-sheet-confirm')?.addEventListener('click', () => confirmAddFood(food, sheet));
   sheet.querySelector('.bottom-sheet__backdrop')?.addEventListener('click', closeAddSheet);
+
+  // Dynamic nutrition preview when amount changes
+  const amtInput = sheet.querySelector('#add-sheet-amount');
+  const preview  = sheet.querySelector('#add-sheet-preview');
+  amtInput?.addEventListener('input', () => updateAddSheetPreview(food, amtInput, preview));
 }
 
 function buildAddSheetHTML(food) {
   const cals    = calcCalories(food.protein, food.carbs, food.fat);
   const lastAmt = store.state.lastAmounts?.[food.no] || food.amount;
   const options = CONFIG.labels.mealTypes
-    .map(t => `<option value="${t}" ${t===selectedMealType?'selected':''}>${t}</option>`).join('');
+    .map(t=>`<option value="${t}" ${t===selectedMealType?'selected':''}>${t}</option>`).join('');
   return `
     <div class="bottom-sheet__backdrop"></div>
     <div class="bottom-sheet__panel">
       <div class="bottom-sheet__header">
-        <span class="bottom-sheet__title">${escapeHtml(food.name)}</span>
+        <span class="bottom-sheet__title">${escHtml(food.name)}</span>
         <span class="bottom-sheet__sub">${cals} kcal per ${food.amount}${food.unit}</span>
       </div>
-      <div style="display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap">
-        ${[['Cal',cals,''],['P',food.protein.toFixed(1),'g'],['C',food.carbs.toFixed(1),'g'],
-           ['F',food.fat.toFixed(1),'g'],['Fi',(food.fibre||0).toFixed(1),'g']]
-          .map(([l,v,u])=>`
-          <div style="background:var(--color-accent-light);border-radius:7px;padding:5px 9px;text-align:center;min-width:44px">
-            <div style="font-size:10px;color:var(--color-text-secondary)">${l}</div>
-            <div style="font-size:13px;font-weight:500;color:var(--color-accent-dark)">${v}${u}</div>
-          </div>`).join('')}
+      <!-- Dynamic nutrition preview chips -->
+      <div id="add-sheet-preview" class="add-sheet-preview">
+        ${buildPreviewChips(food, lastAmt)}
       </div>
       <div class="bottom-sheet__body">
         <label class="sheet-label" for="add-sheet-amount">Amount (${food.unit})</label>
@@ -344,47 +381,69 @@ function buildAddSheetHTML(food) {
     </div>`;
 }
 
+function buildPreviewChips(food, amount) {
+  const ratio = amount / (food.amount || 100);
+  const cals  = Math.round(calcCalories(food.protein, food.carbs, food.fat) * ratio);
+  return [
+    ['Cal', cals, ''],
+    ['P', ((food.protein||0)*ratio).toFixed(1), 'g'],
+    ['C', ((food.carbs||0)*ratio).toFixed(1), 'g'],
+    ['F', ((food.fat||0)*ratio).toFixed(1), 'g'],
+    ['Fi', ((food.fibre||0)*ratio).toFixed(1), 'g'],
+  ].map(([l,v,u])=>`
+    <div class="add-sheet-chip">
+      <div class="add-sheet-chip__label">${l}</div>
+      <div class="add-sheet-chip__val">${v}${u}</div>
+    </div>`).join('');
+}
+
+function updateAddSheetPreview(food, amtInput, preview) {
+  if (!preview) return;
+  const amount = parseFloat(amtInput.value) || 0;
+  preview.innerHTML = buildPreviewChips(food, amount);
+}
+
 function closeAddSheet() {
   const sheet = document.getElementById('add-food-sheet');
   if (!sheet) return;
   sheet.classList.remove('bottom-sheet--visible');
-  setTimeout(() => sheet.remove(), 250);
+  setTimeout(()=>sheet.remove(), 250);
 }
 
 async function confirmAddFood(food, sheet) {
   const amountInput = sheet.querySelector('#add-sheet-amount');
   const mealSelect  = sheet.querySelector('#add-sheet-meal');
-  const amount      = parseFloat(amountInput?.value) || food.amount;
-  const mealType    = mealSelect?.value || selectedMealType;
+  const amount      = parseFloat(amountInput?.value)||food.amount;
+  const mealType    = mealSelect?.value||selectedMealType;
   selectedMealType  = mealType;
   const confirmBtn  = sheet.querySelector('#add-sheet-confirm');
   if (confirmBtn) { confirmBtn.disabled=true; confirmBtn.textContent='Adding…'; }
-  const ratio = amount / food.amount;
-  const date  = store.state.currentDate || today();
+  const ratio = amount/food.amount;
+  const date  = store.state.currentDate||today();
   const entry = { date, mealType, foodNo:food.no, name:food.name, amount, unit:food.unit,
-    calories:  Math.round(calcCalories(food.protein, food.carbs, food.fat) * ratio),
-    protein:   Math.round(food.protein   * ratio * 10) / 10,
-    carbs:     Math.round(food.carbs     * ratio * 10) / 10,
-    fat:       Math.round(food.fat       * ratio * 10) / 10,
-    fibre:     Math.round((food.fibre||0)* ratio * 10) / 10,
-    sodium:    Math.round((food.sodium||0)   * ratio),
-    potassium: Math.round((food.potassium||0)* ratio),
+    calories:  Math.round(calcCalories(food.protein,food.carbs,food.fat)*ratio),
+    protein:   Math.round(food.protein  *ratio*10)/10,
+    carbs:     Math.round(food.carbs    *ratio*10)/10,
+    fat:       Math.round(food.fat      *ratio*10)/10,
+    fibre:     Math.round((food.fibre||0)*ratio*10)/10,
+    sodium:    Math.round((food.sodium||0)*ratio),
+    potassium: Math.round((food.potassium||0)*ratio),
   };
   try {
     await addLogEntry(entry);
-    if (!store.state.lastAmounts) store.state.lastAmounts = {};
+    if (!store.state.lastAmounts) store.state.lastAmounts={};
     store.state.lastAmounts[food.no] = amount;
     invalidateLogCache(date);
-    showToast(`Added ${food.name} ✓`, 'success');
+    showToast(`Added ${food.name} ✓`,'success');
     closeAddSheet();
   } catch (err) {
-    console.error('[search] confirmAddFood →', err);
-    showToast('Failed to add food', 'error');
+    console.error('[search] confirmAddFood:', err);
+    showToast('Failed to add food','error');
     if (confirmBtn) { confirmBtn.disabled=false; confirmBtn.textContent='Add to Log'; }
   }
 }
 
-// ── Favourite toggle ──────────────────────────────────────────
+// ── Favourite toggle (in search results) ─────────────────────
 async function handleToggleFavourite(foodNo, rowEl) {
   const favSet = store.state.favourites;
   const wasFav = favSet.has(foodNo);
@@ -392,12 +451,12 @@ async function handleToggleFavourite(foodNo, rowEl) {
   updateFavBtn(rowEl, !wasFav);
   try {
     const result = await toggleFavourite(foodNo);
-    showToast(result.added ? 'Added to favourites ★' : 'Removed from favourites', 'success');
+    showToast(result.added?'Added to favourites ★':'Removed from favourites','success');
   } catch (err) {
     wasFav ? favSet.add(foodNo) : favSet.delete(foodNo);
     updateFavBtn(rowEl, wasFav);
-    console.error('[search] handleToggleFavourite →', err);
-    showToast('Failed to update favourite', 'error');
+    console.error('[search] handleToggleFavourite:', err);
+    showToast('Failed to update favourite','error');
   }
 }
 
@@ -405,9 +464,9 @@ function updateFavBtn(rowEl, isFav) {
   const btn = rowEl.querySelector('.fav-btn');
   if (!btn) return;
   btn.classList.toggle('fav-btn--active', isFav);
-  btn.setAttribute('aria-label', isFav ? 'Remove from favourites' : 'Add to favourites');
+  btn.setAttribute('aria-label', isFav?'Remove from favourites':'Add to favourites');
 }
 
-function escapeHtml(str) {
-  return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+function escHtml(s) {
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 }
