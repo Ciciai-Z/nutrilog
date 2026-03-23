@@ -1,6 +1,6 @@
 // ============================================================
 // main.js — 路由初始化
-// Updated: Session 4 + Bug fixes v2 (tab switch guard fixed)
+// Fixed: preload foods on login so sidebar & search are instant
 // ============================================================
 import { isLoggedIn, renderAuthScreen, logout } from './auth.js';
 import { store } from './store.js';
@@ -46,13 +46,12 @@ function renderAppShell() {
         </button>
       </nav>
     </div>`;
-
   updateDatePill();
   setupTabBar();
   navigateTo('today');
 }
 
-// ── Date pill — "Mon 23 Mar" ───────────────────────────────────
+// ── Date pill ──────────────────────────────────────────────────
 function formatPillDate(dateStr) {
   if (!dateStr) return '';
   try {
@@ -71,7 +70,7 @@ function updateDatePill() {
   const pill = document.getElementById('nav-date-pill');
   if (!pill) return;
   pill.textContent = formatPillDate(store.state.currentDate || today());
-  pill.title = 'Use \u2039 \u203a on Today to change date';
+  pill.title = 'Use ‹ › on Today to change date';
 }
 
 // ── Tab bar ────────────────────────────────────────────────────
@@ -94,28 +93,19 @@ export async function navigateTo(tab) {
   const isSidebarTab = isMac && ['today','favourites','meals'].includes(tab);
   const wasSidebarTab= isMac && ['today','favourites','meals'].includes(currentTab);
 
-  // Only skip re-init when: same tab + sidebar + shell DOM still intact
   if (tab === currentTab && isSidebarTab && document.getElementById('mac-left')) return;
-  // Skip same non-sidebar tab
   if (tab === currentTab && !isSidebarTab) return;
-
-  // Coming back from Settings/History to a sidebar tab → must rebuild shell
   if (isSidebarTab && !wasSidebarTab) macShellRendered = false;
 
   currentTab = tab;
-
   document.querySelectorAll('.tab-bar__item[data-tab]').forEach(btn => {
     btn.classList.toggle('tab-bar__item--active', btn.dataset.tab === tab);
   });
 
   const content = document.getElementById('main-content');
 
-  if (isSidebarTab) {
-    await renderWithSidebar(tab, content);
-    return;
-  }
+  if (isSidebarTab) { await renderWithSidebar(tab, content); return; }
 
-  // Full swap — clear shell state
   if (isMac) macShellRendered = false;
 
   switch (tab) {
@@ -160,6 +150,7 @@ async function renderWithSidebar(tab, content) {
     macShellRendered = true;
   }
 
+  // Render sidebar immediately with cached data (no wait)
   renderSidebarSummary();
 
   const left = document.getElementById('mac-left');
@@ -183,14 +174,12 @@ async function renderWithSidebar(tab, content) {
 export function refreshSidebar()   { renderSidebarSummary(); }
 export function notifyDateChange() { updateDatePill(); }
 
-// ── Logout ─────────────────────────────────────────────────────
 function handleLogout() {
   currentTab       = null;
   macShellRendered = false;
   logout();
 }
 
-// ── Placeholder ────────────────────────────────────────────────
 function placeholderPage(title, icon, note) {
   return `
     <div class="page">
@@ -204,17 +193,31 @@ function placeholderPage(title, icon, note) {
     </div>`;
 }
 
-// ── Login init ─────────────────────────────────────────────────
+// ── Login init — preload foods in background ───────────────────
 async function onLogin() {
   store.setCurrentDate(today());
+
+  // Load settings first (fast)
   try {
     const settings = await getSettings();
     store.setSettings(settings);
-    console.log('[main] settings loaded →', settings);
+    console.log('[main] settings loaded');
   } catch (ex) {
     console.error('[main] failed to load settings:', ex.message);
   }
+
+  // Render app immediately — don't wait for foods
   renderAppShell();
+
+  // Preload food database + favourites in background so first search is instant
+  Promise.all([
+    import('./search.js').then(m => m.ensureFoodsLoaded()),
+    import('./search.js').then(m => m.ensureFavouritesLoaded?.()),
+  ]).then(() => {
+    console.log('[main] foods + favourites preloaded ✓');
+  }).catch(err => {
+    console.warn('[main] background preload failed:', err.message);
+  });
 }
 
 window.addEventListener('nutrilog:login', onLogin);

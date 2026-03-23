@@ -433,3 +433,180 @@ ul { list-style: none; }
   .favs-page-shell__left  { overflow-y: auto; padding: var(--space-4); min-height: 0; }
   .favs-page-shell__right { border-left: 1px solid var(--color-border); background: var(--color-bg-card); overflow-y: auto; padding: 16px 14px; min-height: 0; display: flex; flex-direction: column; }
 }
+
+/* ============================================================
+   ENTRY ROW — new design (fix #2 delete button, fix #3 layout)
+   Layout: [name] [badge amount] [kcal]  [× button]
+           [P C F Na K]
+============================================================ */
+.entry-row { border-bottom: .5px solid var(--color-border); }
+.entry-row:last-child { border-bottom: none; }
+
+.entry-row__main {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 11px;
+  background: var(--color-bg-card);
+  transition: background .1s;
+}
+.entry-row__main:hover { background: #fafaf8; }
+
+.entry-row__left {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.entry-row__name {
+  font-size: .88rem;
+  font-weight: 500;
+  color: var(--color-text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.entry-row__sub {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.entry-row__amount-btn {
+  display: inline-block;
+  background: var(--color-accent-light);
+  color: var(--color-accent-dark);
+  border: .5px solid var(--color-accent);
+  border-radius: 5px;
+  padding: 1px 7px;
+  font-size: .75rem;
+  font-weight: 500;
+  font-family: var(--font-sans);
+  cursor: pointer;
+  transition: background .12s;
+  flex-shrink: 0;
+}
+.entry-row__amount-btn:hover { background: var(--color-accent); color: #fff; }
+
+.entry-row__cals {
+  font-size: .82rem;
+  font-weight: 500;
+  color: var(--color-text-primary);
+  white-space: nowrap;
+}
+
+.entry-row__macros {
+  font-size: .72rem;
+  color: var(--color-text-secondary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.entry-row__minerals {
+  color: var(--color-text-hint);
+}
+
+/* Inline delete button — always visible, right side */
+.entry-row__delete-btn {
+  flex-shrink: 0;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  background: transparent;
+  border: .5px solid var(--color-border);
+  color: var(--color-text-secondary);
+  font-size: 1rem;
+  line-height: 1;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background .12s, color .12s, border-color .12s;
+  opacity: 0.45;
+}
+.entry-row__main:hover .entry-row__delete-btn { opacity: 1; }
+.entry-row__delete-btn:hover {
+  background: var(--color-error);
+  border-color: var(--color-error);
+  color: #fff;
+}
+
+/* Remove old swipe-delete styles that conflict */
+.entry-row__swipe-container { display: none; }
+
+/* ── iPhone specific fixes ──────────────────────────────────── */
+@media (max-width: 767px) {
+  /* Ensure full viewport width on mobile */
+  html, body { overflow-x: hidden; }
+
+  .main-content {
+    width: 100%;
+    max-width: 100%;
+    padding-top: 0;
+    height: auto;
+    min-height: 100%;
+    overflow-y: auto;
+  }
+
+  .app-shell { width: 100%; overflow-x: hidden; }
+
+  /* Tab bar stays at bottom on mobile */
+  .tab-bar {
+    position: fixed;
+    bottom: 0; top: auto;
+    left: 0; right: 0;
+    transform: none;
+    max-width: 100%;
+    height: 54px;
+    border-top: 1px solid var(--color-border);
+    border-bottom: none;
+    flex-direction: row;
+    padding: 0;
+  }
+
+  .tab-bar__item {
+    flex: 1;
+    flex-direction: column;
+    gap: 2px;
+    font-size: 10px;
+    padding: 4px 0;
+    height: auto;
+    border-radius: 0;
+  }
+
+  .tab-bar__icon { font-size: 18px; }
+  .nav-date-pill { display: none; }
+
+  /* Log page padding for tab bar */
+  .log-page { padding-bottom: 60px; }
+  .log-meals { padding: 8px 10px 20px; }
+
+  /* Meal section on mobile */
+  .meal-section__macros { display: none; } /* Too cramped on iPhone */
+
+  /* Entry rows on mobile — slightly larger touch targets */
+  .entry-row__main { padding: 9px 10px; }
+  .entry-row__name { font-size: .86rem; }
+  .entry-row__delete-btn { opacity: 0.6; width: 30px; height: 30px; }
+
+  /* Bottom sheet full height on iPhone */
+  .bottom-sheet__panel {
+    border-radius: 20px 20px 0 0;
+    padding-bottom: env(safe-area-inset-bottom, 20px);
+  }
+
+  /* Search input size 16px prevents iOS auto-zoom */
+  .search-input { font-size: 16px; }
+  .sheet-input, .sheet-select { font-size: 16px; }
+}
+
+/* ── Mac: meal section macros always visible ─────────────────── */
+@media (min-width: 768px) {
+  .meal-section__macros { display: flex; }
+  .entry-row__delete-btn { opacity: 0; }
+  .entry-row__main:hover .entry-row__delete-btn { opacity: 1; }
+}
