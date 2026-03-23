@@ -359,12 +359,11 @@ docs/
 
 ## 下一步行动
 
-**B2 完成 ✅ — 立即开始 B3 Settings**
+**B3 完成 ✅ — 立即开始 B4 Today Log 展示**
 
-1. **B3（现在）** — Settings 编辑器，营养目标可编辑并持久化，PIN 修改功能
-2. **B4** — Today Log 展示（只读）
-3. **B4 → B5** — Log 展示 → Log CRUD，**B5 完成后开始日常使用**
-4. **B6 → B9** — 在可用基础上持续迭代
+1. **B4（现在）** — Today Log 展示（只读），含日期选择器和 Macro 汇总
+2. **B4 → B5** — Log 展示 → Log CRUD，**B5 完成后开始日常使用**
+3. **B6 → B9** — 在可用基础上持续迭代
 
 ---
 
@@ -421,8 +420,8 @@ docs/
 | B0 | Infrastructure setup | ✅ 已完成 | 2026-03-22 | |
 | B1 | Auth + skeleton | ✅ 已完成 | 2026-03-22 | |
 | B2 | Food Search | ✅ 已完成 | 2026-03-23 | |
-| B3 | Settings | 🔄 进行中 | — | |
-| B4 | Today Log 展示 | ⬜ 未开始 | — | |
+| B3 | Settings | ✅ 已完成 | 2026-03-23 | |
+| B4 | Today Log 展示 | 🔄 进行中 | — | |
 | B5 | Log entry CRUD | ⬜ 未开始 | — | ⭐ 完成后即可日常使用 |
 | B6 | Quick Add | ⬜ 未开始 | — | |
 | B7 | Custom Foods + Favourites | ⬜ 未开始 | — | |
@@ -474,22 +473,17 @@ docs/
 
 ---
 
-### B3 · Settings（🔄 进行中）
+### B3 · Settings（✅ 已完成，2026-03-23）
 
-**目标：** 营养目标可编辑并持久化。
+**验收通过：**
+- [x] 修改 Calories 目标 → 保存 → 刷新页面 → 仍显示修改后的值
+- [x] Settings sheet 对应行更新
+- [x] 只显示 5 个字段（Calories / Protein / Carbs / Fat / Fibre），无 Sodium/Potassium
 
-**依赖：** B1
-
-**包含文件：**
-```
-gas/Code.gs          ← updateSettings 已在 B1 实现
-src/settings.js      ← 设置页面逻辑（完整编辑器）
-```
-
-**验收：**
-- [ ] 修改 Calories 目标 → 保存 → 刷新页面 → 仍显示修改后的值
-- [ ] Settings sheet 对应行更新
-- [ ] 进度条颜色逻辑正确（>110% amber，>120% red）
+**B3 期间修复的 Bug：**
+- updateSettings GAS 端从 `payload` 顶层迭代改为从 `payload.settings` 读取
+- Settings sheet 第 11 行脏数据（`settings | {calorie_target=2200.0}`）已手动清除
+- Fibre max 从 100 放宽到 200
 
 ---
 
