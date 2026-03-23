@@ -73,10 +73,8 @@ async function ensureFavouritesLoaded() {
 function bindSearchEvents() {
   const input = document.getElementById('food-search-input');
   if (!input) return;
-  input.addEventListener('input', () => {
-    clearTimeout(debounceTimer);
-    debounceTimer = setTimeout(() => runSearch(input.value), CONFIG.search.debounceMs);
-  });
+  // No debounce — all filtering is local (client-side), instant response
+  input.addEventListener('input', () => runSearch(input.value));
   input.addEventListener('focus', () => { if (!input.value.trim()) runSearch(''); });
 }
 

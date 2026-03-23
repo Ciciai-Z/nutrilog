@@ -1,15 +1,15 @@
 // ============================================================
 // main.js — 路由初始化，页面切换入口
-// Updated: B4 (wires Today tab to initLog)
+// Updated: B5 (tab dedup, logout button)
 // ============================================================
 
-import { isLoggedIn, renderAuthScreen } from './auth.js';
-import { store }                        from './store.js';
-import { getSettings }                  from './api.js';
-import { today }                        from './utils.js';
-import { initSearch }                   from './search.js';
-import { initSettings }                 from './settings.js';
-import { initLog }                      from './log.js';
+import { isLoggedIn, renderAuthScreen, logout } from './auth.js';
+import { store }                                 from './store.js';
+import { getSettings }                           from './api.js';
+import { today }                                 from './utils.js';
+import { initSearch }                            from './search.js';
+import { initSettings }                          from './settings.js';
+import { initLog }                               from './log.js';
 
 // ── 页面骨架 ──────────────────────────────────────────────────
 
@@ -41,6 +41,10 @@ function renderAppShell() {
           <span class="tab-bar__icon">⚙️</span>
           <span class="tab-bar__label">Settings</span>
         </button>
+        <button class="tab-bar__item tab-bar__item--logout" id="logout-btn">
+          <span class="tab-bar__icon">🔓</span>
+          <span class="tab-bar__label">Logout</span>
+        </button>
       </nav>
     </div>`;
 
@@ -56,13 +60,16 @@ function setupTabBar() {
   document.getElementById('tab-bar').addEventListener('click', (e) => {
     const btn = e.target.closest('.tab-bar__item');
     if (!btn) return;
+    if (btn.id === 'logout-btn') { handleLogout(); return; }
     navigateTo(btn.dataset.tab);
   });
 }
 
 async function navigateTo(tab) {
+  if (currentTab === tab) return;  // same tab, skip re-init
   currentTab = tab;
-  document.querySelectorAll('.tab-bar__item').forEach(btn => {
+
+  document.querySelectorAll('.tab-bar__item[data-tab]').forEach(btn => {
     btn.classList.toggle('tab-bar__item--active', btn.dataset.tab === tab);
   });
 
@@ -96,6 +103,15 @@ async function navigateTo(tab) {
       content.innerHTML = placeholderPage(tab, '🔧', `${tab} coming soon`);
   }
 }
+
+// ── Logout ────────────────────────────────────────────────────
+
+function handleLogout() {
+  currentTab = null;
+  logout();
+}
+
+// ── Placeholder ───────────────────────────────────────────────
 
 function placeholderPage(title, icon, note) {
   return `

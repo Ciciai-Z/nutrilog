@@ -1010,3 +1010,47 @@ ul { list-style: none; }
   width: 100%;
   font-size: var(--text-sm);
 }
+/* ============================================================
+   B5 fixes — append to styles/main.css
+   ============================================================ */
+
+/* ── Fix swipe blank space: delete btn hidden by width not just opacity ── */
+
+.entry-row__delete-btn {
+  flex-shrink: 0;
+  width: 0;
+  overflow: hidden;
+  background: var(--color-error);
+  color: #fff;
+  font-size: var(--text-sm);
+  font-weight: 600;
+  border: none;
+  cursor: pointer;
+  transition: width 0.2s ease, opacity 0.2s ease;
+  opacity: 0;
+  white-space: nowrap;
+}
+
+.entry-row--swiped .entry-row__delete-btn {
+  width: 80px;
+  opacity: 1;
+}
+
+/* Desktop: show on hover */
+@media (min-width: 768px) {
+  .entry-row:hover .entry-row__delete-btn {
+    width: 72px;
+    opacity: 1;
+  }
+}
+
+/* ── Logout button styling ───────────────────────────────── */
+
+.tab-bar__item--logout {
+  color: var(--color-text-secondary);
+}
+
+.tab-bar__item--logout:hover,
+.tab-bar__item--logout:active {
+  color: var(--color-error);
+}

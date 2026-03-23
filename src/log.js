@@ -326,31 +326,36 @@ async function handleDelete(rowIndex) {
   try {
     await deleteLogEntry(rowIndex);
 
-    // Remove the entry row directly from DOM — no full page reload
+    // Remove the entry row from DOM
     const rowEl = document.querySelector(`.entry-row[data-row-index="${rowIndex}"]`);
     if (rowEl) {
-      rowEl.style.transition = 'opacity 0.2s, max-height 0.2s';
+      const mealSection = rowEl.closest('.meal-section');
+      rowEl.style.transition = 'opacity 0.2s, max-height 0.25s';
       rowEl.style.opacity    = '0';
-      rowEl.style.maxHeight  = '0';
-      rowEl.style.overflow   = 'hidden';
-      setTimeout(() => rowEl.remove(), 220);
+      rowEl.style.maxHeight  = rowEl.offsetHeight + 'px';
+      setTimeout(() => {
+        rowEl.style.maxHeight = '0';
+        rowEl.style.overflow  = 'hidden';
+      }, 10);
+      setTimeout(() => {
+        rowEl.remove();
+        // Remove meal section if now empty
+        if (mealSection && !mealSection.querySelector('.entry-row')) {
+          mealSection.style.transition = 'opacity 0.2s';
+          mealSection.style.opacity    = '0';
+          setTimeout(() => mealSection.remove(), 200);
+        }
+      }, 260);
     }
 
-    // Invalidate cache so next visit re-fetches
+    // Update local cache
     const date = store.state.currentDate || today();
-    invalidateLogCache(date);
-
-    // Update summary strip with fresh data after short delay
-    setTimeout(async () => {
-      if (store.state.dailyLog[date] === undefined) {
-        store.state.dailyLog[date] = await getDailyLog(date);
-      } else {
-        // Remove entry from local cache too
-        store.state.dailyLog[date] = store.state.dailyLog[date]
-          .filter(e => e.rowIndex !== rowIndex);
-      }
+    if (store.state.dailyLog[date]) {
+      store.state.dailyLog[date] = store.state.dailyLog[date]
+        .filter(e => e.rowIndex !== rowIndex);
       renderSummaryStrip(store.state.dailyLog[date]);
-    }, 250);
+    }
+    invalidateLogCache(date);
 
     showToast('Entry deleted', 'success');
     console.log(`[log] handleDelete → row=${rowIndex}`);
