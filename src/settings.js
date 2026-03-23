@@ -12,12 +12,11 @@ import { showToast }       from './ui.js';
 // key matches Settings sheet key-value, label is display name, unit shown in input
 
 const NUTRIENT_FIELDS = [
-  { key: 'calorie_target',  label: 'Calories',  unit: 'kcal', min: 500,  max: 5000, step: 50  },
-  { key: 'protein_target',  label: 'Protein',   unit: 'g',    min: 10,   max: 500,  step: 1   },
-  { key: 'carbs_target',    label: 'Carbs',     unit: 'g',    min: 10,   max: 1000, step: 1   },
-  { key: 'fat_target',      label: 'Fat',       unit: 'g',    min: 10,   max: 500,  step: 1   },
-  { key: 'fibre_target',    label: 'Fibre',     unit: 'g',    min: 0,    max: 100,  step: 1   },
-  { key: 'sodium_target',   label: 'Sodium',    unit: 'mg',   min: 0,    max: 5000, step: 50  },
+  { key: 'calorie_target',  label: 'Calories',  unit: 'kcal', min: 500,  max: 5000, step: 50 },
+  { key: 'protein_target',  label: 'Protein',   unit: 'g',    min: 10,   max: 500,  step: 1  },
+  { key: 'carbs_target',    label: 'Carbs',     unit: 'g',    min: 10,   max: 1000, step: 1  },
+  { key: 'fat_target',      label: 'Fat',       unit: 'g',    min: 10,   max: 500,  step: 1  },
+  { key: 'fibre_target',    label: 'Fibre',     unit: 'g',    min: 0,    max: 200,  step: 1  },
 ];
 
 // ── Public init ───────────────────────────────────────────────
