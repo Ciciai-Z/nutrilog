@@ -708,3 +708,207 @@ ul { list-style: none; }
   padding: var(--space-3);
   font-size: var(--text-base);
 }
+/* ============================================================
+   B4 — Today Log styles
+   Append this block to the end of styles/main.css
+   ============================================================ */
+
+/* ── Log page layout ─────────────────────────────────────────*/
+
+.log-page {
+  display: flex;
+  flex-direction: column;
+  min-height: 100%;
+}
+
+.log-page .page-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--space-3) var(--space-4);
+}
+
+.log-nav-btn {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  background: var(--color-bg-page);
+  border: 1.5px solid var(--color-border);
+  color: var(--color-accent);
+  font-size: 1.4rem;
+  line-height: 1;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.1s;
+  flex-shrink: 0;
+}
+
+.log-nav-btn:active  { background: var(--color-accent-light); }
+.log-nav-btn:disabled { opacity: 0.3; cursor: default; }
+
+.log-date-wrap { flex: 1; text-align: center; }
+
+/* ── Summary strip ───────────────────────────────────────────*/
+
+.log-summary-strip {
+  background: var(--color-bg-card);
+  border-bottom: 1px solid var(--color-border);
+  padding: var(--space-3) var(--space-4);
+}
+
+.summary-strip {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.summary-macro { display: flex; flex-direction: column; gap: 4px; }
+
+.summary-macro__header {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+}
+
+.summary-macro__label {
+  font-size: var(--text-xs);
+  font-weight: 600;
+  color: var(--color-text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.summary-macro__value {
+  font-size: var(--text-sm);
+  font-weight: 700;
+  color: var(--color-text-primary);
+}
+
+.summary-macro__target {
+  font-size: var(--text-xs);
+  font-weight: 400;
+  color: var(--color-text-secondary);
+}
+
+/* ── Meal sections ───────────────────────────────────────────*/
+
+.log-meals {
+  flex: 1;
+  padding-bottom: 80px;
+}
+
+.meal-section {
+  margin: var(--space-3) var(--space-4) 0;
+  background: var(--color-bg-card);
+  border-radius: var(--radius-card);
+  overflow: hidden;
+  box-shadow: var(--shadow-card);
+}
+
+.meal-section__header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: var(--space-3) var(--space-4);
+  border-bottom: 1px solid var(--color-border);
+}
+
+.meal-section__name {
+  font-size: var(--text-sm);
+  font-weight: 700;
+  color: var(--color-accent);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.meal-section__cals {
+  font-size: var(--text-xs);
+  color: var(--color-text-secondary);
+}
+
+/* ── Entry rows ──────────────────────────────────────────────*/
+
+.entry-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--space-3) var(--space-4);
+  border-bottom: 1px solid var(--color-border);
+  gap: var(--space-3);
+}
+
+.entry-row:last-child { border-bottom: none; }
+
+.entry-row__info {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.entry-row__name {
+  font-size: 0.9rem;
+  font-weight: 500;
+  color: var(--color-text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.entry-row__meta {
+  font-size: 0.75rem;
+  color: var(--color-text-secondary);
+}
+
+.entry-row__nutrients {
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 2px;
+}
+
+.entry-row__cals {
+  font-size: 0.88rem;
+  font-weight: 600;
+  color: var(--color-text-primary);
+}
+
+.entry-row__macros {
+  font-size: 0.7rem;
+  color: var(--color-text-secondary);
+  white-space: nowrap;
+}
+
+/* ── Empty / loading states ──────────────────────────────────*/
+
+.log-empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-8) var(--space-4);
+  color: var(--color-text-secondary);
+  text-align: center;
+}
+
+.log-empty-state__icon { font-size: 48px; }
+.log-empty-state__text { font-size: var(--text-base); font-weight: 500; }
+.log-empty-state__sub  { font-size: var(--text-sm); }
+
+.log-empty {
+  text-align: center;
+  color: var(--color-text-secondary);
+  font-size: var(--text-sm);
+  padding: var(--space-6);
+}
+
+.log-loading {
+  text-align: center;
+  color: var(--color-text-secondary);
+  font-size: var(--text-sm);
+  padding: var(--space-6);
+}

@@ -1,6 +1,6 @@
 // ============================================================
 // main.js — 路由初始化，页面切换入口
-// Updated: B3 (wires Settings tab to initSettings)
+// Updated: B4 (wires Today tab to initLog)
 // ============================================================
 
 import { isLoggedIn, renderAuthScreen } from './auth.js';
@@ -9,8 +9,9 @@ import { getSettings }                  from './api.js';
 import { today }                        from './utils.js';
 import { initSearch }                   from './search.js';
 import { initSettings }                 from './settings.js';
+import { initLog }                      from './log.js';
 
-// ── 页面骨架 HTML ─────────────────────────────────────────────
+// ── 页面骨架 ──────────────────────────────────────────────────
 
 function renderAppShell() {
   const app = document.getElementById('app');
@@ -52,8 +53,7 @@ function renderAppShell() {
 let currentTab = null;
 
 function setupTabBar() {
-  const tabBar = document.getElementById('tab-bar');
-  tabBar.addEventListener('click', (e) => {
+  document.getElementById('tab-bar').addEventListener('click', (e) => {
     const btn = e.target.closest('.tab-bar__item');
     if (!btn) return;
     navigateTo(btn.dataset.tab);
@@ -62,7 +62,6 @@ function setupTabBar() {
 
 async function navigateTo(tab) {
   currentTab = tab;
-
   document.querySelectorAll('.tab-bar__item').forEach(btn => {
     btn.classList.toggle('tab-bar__item--active', btn.dataset.tab === tab);
   });
@@ -71,7 +70,8 @@ async function navigateTo(tab) {
 
   switch (tab) {
     case 'today':
-      content.innerHTML = renderTodayPage();
+      content.innerHTML = '<div id="view-today" class="page"></div>';
+      await initLog();
       break;
 
     case 'search':
@@ -97,8 +97,6 @@ async function navigateTo(tab) {
   }
 }
 
-// ── 占位页面 ──────────────────────────────────────────────────
-
 function placeholderPage(title, icon, note) {
   return `
     <div class="page">
@@ -108,23 +106,6 @@ function placeholderPage(title, icon, note) {
       <div class="page-placeholder">
         <span class="page-placeholder__icon">${icon}</span>
         <p class="page-placeholder__text">${note}</p>
-      </div>
-    </div>`;
-}
-
-// ── Today 页面（B4 完善，现在显示骨架） ──────────────────────
-
-function renderTodayPage() {
-  const date = store.state.currentDate || today();
-  return `
-    <div class="page">
-      <header class="page-header">
-        <h2 class="page-header__title">Today</h2>
-        <span class="page-header__date">${date}</span>
-      </header>
-      <div class="page-placeholder">
-        <span class="page-placeholder__icon">📋</span>
-        <p class="page-placeholder__text">Log entries coming in B4 & B5</p>
       </div>
     </div>`;
 }
@@ -146,8 +127,5 @@ async function onLogin() {
 // ── 启动 ──────────────────────────────────────────────────────
 
 window.addEventListener('nutrilog:login', onLogin);
-if (isLoggedIn()) {
-  onLogin();
-} else {
-  renderAuthScreen();
-}
+if (isLoggedIn()) { onLogin(); }
+else { renderAuthScreen(); }

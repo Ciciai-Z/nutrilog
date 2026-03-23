@@ -62,5 +62,23 @@ const CONFIG = {
     favourites: {
       no: 0,
     },
+
+    // DailyLog columns — confirmed from CLAUDE.md
+    dailyLog: {
+      date:      0,   // A - DATE (ddd,M/d/yy)
+      mealType:  1,   // B - MEAL_TYPE
+      foodNo:    2,   // C - FOOD_NO
+      mealNo:    3,   // D - MEAL_NO
+      name:      4,   // E - NAME
+      amount:    5,   // F - AMOUNT
+      unit:      6,   // G - UNIT
+      calories:  7,   // H - CALORIES
+      protein:   8,   // I - PROTEIN
+      carbs:     9,   // J - CARBS
+      fat:       10,  // K - FAT
+      fibre:     11,  // L - FIBRE
+      sodium:    12,  // M - SODIUM
+      potassium: 13,  // N - POTASSIUM
+    },
   },
 };

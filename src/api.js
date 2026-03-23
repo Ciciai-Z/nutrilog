@@ -1,7 +1,7 @@
 // ============================================================
 // api.js — 所有 HTTP 通信的唯一出口
 // 使用 JSONP 绕过 Apps Script CORS 限制
-// Updated: B2 (adds searchFoods, getFavourites, toggleFavourite)
+// Updated: B4 (adds getDailyLog)
 // ============================================================
 
 import { CONFIG } from '../config.js';
@@ -10,11 +10,12 @@ import { store }  from './store.js';
 let jsonpCounter = 0;
 
 /**
- * JSONP fetch — 通过动态 <script> 标签发请求，绕过 CORS
+ * JSONP fetch
  * @param {string} action
- * @param {object|null} body  写操作参数，序列化为 payload= URL 参数
+ * @param {object|null} body        写操作 → 序列化为 payload= URL 参数
+ * @param {object|null} extraParams 读操作附加参数 → 直接追加到 URL
  */
-export function jsonpFetch(action, body = null) {
+export function jsonpFetch(action, body = null, extraParams = null) {
   return new Promise((resolve, reject) => {
     const callbackName = '__nutrilog_cb_' + (++jsonpCounter);
     const token  = store.getToken() || '';
@@ -23,12 +24,12 @@ export function jsonpFetch(action, body = null) {
     if (body) {
       params.set('payload', encodeURIComponent(JSON.stringify(body)));
     }
+    if (extraParams) {
+      for (const [k, v] of Object.entries(extraParams)) params.set(k, v);
+    }
 
     const script    = document.createElement('script');
-    const timeoutId = setTimeout(() => {
-      cleanup();
-      reject(new Error('Request timeout'));
-    }, 15000);
+    const timeoutId = setTimeout(() => { cleanup(); reject(new Error('Request timeout')); }, 15000);
 
     function cleanup() {
       clearTimeout(timeoutId);
@@ -39,24 +40,17 @@ export function jsonpFetch(action, body = null) {
     window[callbackName] = function(data) {
       cleanup();
       console.log(`[api] ${action} →`, data.ok ? 'ok' : data.error);
-      if (!data.ok) {
-        reject(new Error(data.error || 'Unknown error'));
-      } else {
-        resolve(data);   // resolve 整个 { ok, data } 对象，让调用方取 .data
-      }
+      if (!data.ok) { reject(new Error(data.error || 'Unknown error')); }
+      else { resolve(data); }
     };
 
-    script.onerror = function() {
-      cleanup();
-      reject(new Error('Network error'));
-    };
-
+    script.onerror = function() { cleanup(); reject(new Error('Network error')); };
     script.src = `${CONFIG.scriptUrl}?${params}`;
     document.head.appendChild(script);
   });
 }
 
-// ── B1 端点 ────────────────────────────────────────────────
+// ── B1 ────────────────────────────────────────────────────────
 
 export async function verifyPin(pinHash) {
   const res = await jsonpFetch('verifyPin', { pinHash });
@@ -73,19 +67,26 @@ export async function updateSettings(settings) {
   return res.data;
 }
 
-// ── B2 端点 ────────────────────────────────────────────────
+// ── B2 ────────────────────────────────────────────────────────
 
 export async function searchFoods(q = '') {
-  const res = await jsonpFetch('searchFoods', { q });
-  return res.data;   // Array<FoodRecord>
+  const res = await jsonpFetch('searchFoods', null, { q });
+  return res.data;
 }
 
 export async function getFavourites() {
   const res = await jsonpFetch('getFavourites');
-  return res.data;   // Array<number>
+  return res.data;
 }
 
 export async function toggleFavourite(foodNo) {
   const res = await jsonpFetch('toggleFavourite', { foodNo });
-  return res.data;   // { added: boolean }
+  return res.data;
+}
+
+// ── B4 ────────────────────────────────────────────────────────
+
+export async function getDailyLog(date) {
+  const res = await jsonpFetch('getDailyLog', null, { date });
+  return res.data;   // Array<LogEntry>
 }
