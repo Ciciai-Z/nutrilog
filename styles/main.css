@@ -1640,3 +1640,92 @@ div.entry-row__main:hover div.entry-row__right button.entry-row__delete-btn {
 @media (max-width: 767px) {
   .entry-row { cursor: default; }
 }
+/* ============================================================
+   patch4.css — append LAST to main.css
+   Fixes: delete button visible, no iOS zoom, processing state,
+          live nutrition preview highlight
+============================================================ */
+
+/* ── 1. Delete button — darker, clearly visible on iPhone ───── */
+div.entry-row__right button.entry-row__delete-btn {
+  color: #9E9E96 !important;          /* medium grey, not near-white */
+  opacity: 0.75 !important;
+  font-size: 13px !important;
+  width: 24px !important;
+  height: 24px !important;
+}
+div.entry-row__main:hover div.entry-row__right button.entry-row__delete-btn,
+div.entry-row__right button.entry-row__delete-btn:hover {
+  color: #6B6B65 !important;
+  opacity: 1 !important;
+  background: transparent !important;
+}
+@media (max-width: 767px) {
+  div.entry-row__right button.entry-row__delete-btn {
+    opacity: 0.85 !important;         /* always clearly visible on iPhone */
+    color: #888884 !important;
+    width: 28px !important;
+    height: 28px !important;
+    font-size: 14px !important;
+  }
+}
+
+/* ── 2. Prevent iOS auto-zoom on any input < 16px ────────────── */
+/* All inputs in the app get at least 16px font on iOS */
+@media (max-width: 767px) {
+  input, select, textarea {
+    font-size: 16px !important;
+    -webkit-text-size-adjust: 100% !important;
+  }
+  /* But keep visual size small for badges — use transform trick */
+  .entry-amount-input {
+    font-size: 16px !important;
+    transform: scale(0.85);
+    transform-origin: right center;
+  }
+}
+
+/* ── 3. Processing state for Add button ──────────────────────── */
+.favs-expand__btn:disabled,
+.bottom-sheet .btn--primary:disabled,
+#mac-add-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+/* Full-page overlay when processing (added by JS) */
+.log-processing-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(255,255,255,0.4);
+  z-index: 800;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  backdrop-filter: blur(1px);
+}
+.log-processing-overlay__spinner {
+  width: 32px; height: 32px;
+  border: 3px solid var(--color-accent-light);
+  border-top-color: var(--color-accent);
+  border-radius: 50%;
+  animation: spin 0.7s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* ── 4. Live nutrition preview highlight ─────────────────────── */
+.entry-row__cals--preview {
+  color: var(--color-accent-dark);
+  font-weight: 600;
+}
+/* Macros row during edit */
+.entry-row__macros--editing {
+  color: var(--color-accent);
+}
+
+/* ── 5. Favourites expand — no zoom ─────────────────────────── */
+.favs-expand__input  { font-size: 16px !important; }
+.favs-expand__select { font-size: 16px !important; }
+.favs-expand__btn    { touch-action: manipulation; }
+
+/* ── 6. Bottom sheet inputs — no zoom ───────────────────────── */
+.sheet-input, .sheet-select { font-size: 16px !important; }

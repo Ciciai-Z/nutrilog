@@ -1,7 +1,7 @@
 // ============================================================
 // log.js — Today's Log
-// Fixed: touch drag (500ms, preventDefault, no text select),
-//        delete button (grey, aligned), 🔥 meal header
+// Fixed: fav state sync on load, dynamic amount preview,
+//        no zoom on inputs, darker delete button
 // ============================================================
 import { CONFIG } from '../config.js';
 import { getDailyLog, deleteLogEntry, updateLogEntry, syncDailySummary, addLogEntry, toggleFavourite } from './api.js';
@@ -124,7 +124,7 @@ function bindMobileSearch(id) {
   });
 }
 
-// ── Mac search pill ────────────────────────────────────────────
+// ── Mac search ─────────────────────────────────────────────────
 let _macSelFood = null;
 
 function bindMacSearch() {
@@ -217,17 +217,44 @@ function bindMacSearch() {
 function calcCals(food,amount){const r=amount/(food.amount||100);return Math.round((food.fat||0)*r*9+(food.carbs||0)*r*4+(food.protein||0)*r*4);}
 const r1=v=>Math.round(v*10)/10;
 
+// ── Load + render ──────────────────────────────────────────────
+// Also ensures favourites are loaded before rendering entry rows
 async function loadAndRender(date) {
   const el=document.getElementById('log-meals');
   if(el)el.innerHTML='<p class="log-loading">Loading…</p>';
   try{
-    if(!store.state.dailyLog[date])store.state.dailyLog[date]=await getDailyLog(date);
-    renderLog(date,store.state.dailyLog[date]);
+    // Load log + ensure favourites in parallel for correct ★ state
+    const [entries] = await Promise.all([
+      store.state.dailyLog[date]
+        ? Promise.resolve(store.state.dailyLog[date])
+        : getDailyLog(date).then(e=>{store.state.dailyLog[date]=e;return e;}),
+      ensureFavouritesReady(),
+    ]);
+    store.state.dailyLog[date] = entries;
+    renderLog(date, entries);
   }catch(err){console.error('[log] loadAndRender:',err);showToast('Failed to load log','error');showEmptyState();}
 }
 
-function renderLog(date,entries){renderMacroStrip(entries);renderMealSections(entries);renderSidebarSummary(entries);}
+async function ensureFavouritesReady() {
+  if (store.state.favourites) return;
+  try {
+    const { getFavourites } = await import('./api.js');
+    const ids = await getFavourites();
+    store.state.favourites = new Set(ids);
+    console.log('[log] favourites loaded:', store.state.favourites.size);
+  } catch (err) {
+    console.warn('[log] ensureFavouritesReady failed:', err.message);
+    store.state.favourites = new Set();
+  }
+}
 
+function renderLog(date,entries){
+  renderMacroStrip(entries);
+  renderMealSections(entries);
+  renderSidebarSummary(entries);
+}
+
+// ── iPhone macro strip ─────────────────────────────────────────
 function renderMacroStrip(entries) {
   const el=document.getElementById('log-macro-strip');if(!el)return;
   const t=sumNutrients(entries),s=store.state.settings||{};
@@ -249,6 +276,7 @@ function renderMacroStrip(entries) {
   }).join('');
 }
 
+// ── Sidebar ────────────────────────────────────────────────────
 export function renderSidebarSummary(entries) {
   const el=document.getElementById('sidebar-summary');if(!el)return;
   const date=store.state.currentDate||today();
@@ -265,16 +293,8 @@ export function renderSidebarSummary(entries) {
     {emoji:'💧',label:'Sodium',   unit:'mg',value:t.sodium,   target:Number(s.sodium_target)||2000},
     {emoji:'⚡',label:'Potassium',unit:'mg',value:t.potassium,target:Number(s.potassium_target)||3500},
   ];
-  const bar=(value,target)=>{
-    const pct=target>0?Math.min(value/target*100,100):0,ratio=target>0?value/target:0;
-    const cls=ratio>CONFIG.targets.dangerThreshold?'sidebar-bar__fill--danger':ratio>CONFIG.targets.warningThreshold?'sidebar-bar__fill--warning':'';
-    return `<div class="sidebar-bar"><div class="sidebar-bar__fill ${cls}" style="width:${pct}%"></div></div>`;
-  };
-  const mHTML=macros.map(m=>{
-    const disp=m.label==='Calories'?Math.round(m.value):m.value.toFixed(1);
-    const tDisp=m.label==='Calories'?Math.round(m.target):m.target;
-    return `<div class="sidebar-macro"><div class="sidebar-macro__header"><span class="sidebar-macro__label"><span class="sidebar-macro__emoji">${m.emoji}</span>${m.label}</span><span class="sidebar-macro__value">${disp} / ${tDisp}${m.unit}</span></div>${bar(m.value,m.target)}</div>`;
-  }).join('');
+  const bar=(v,t)=>{const pct=t>0?Math.min(v/t*100,100):0,r=t>0?v/t:0;const cls=r>CONFIG.targets.dangerThreshold?'sidebar-bar__fill--danger':r>CONFIG.targets.warningThreshold?'sidebar-bar__fill--warning':'';return `<div class="sidebar-bar"><div class="sidebar-bar__fill ${cls}" style="width:${pct}%"></div></div>`;};
+  const mHTML=macros.map(m=>{const d=m.label==='Calories'?Math.round(m.value):m.value.toFixed(1),td=m.label==='Calories'?Math.round(m.target):m.target;return `<div class="sidebar-macro"><div class="sidebar-macro__header"><span class="sidebar-macro__label"><span class="sidebar-macro__emoji">${m.emoji}</span>${m.label}</span><span class="sidebar-macro__value">${d} / ${td}${m.unit}</span></div>${bar(m.value,m.target)}</div>`;}).join('');
   const minHTML=minerals.map(m=>`<div class="sidebar-macro"><div class="sidebar-macro__header"><span class="sidebar-macro__label"><span class="sidebar-macro__emoji">${m.emoji}</span>${m.label}</span><span class="sidebar-macro__value">${Math.round(m.value)} / ${Math.round(m.target)}${m.unit}</span></div>${bar(m.value,m.target)}</div>`).join('');
   const remHTML=macros.slice(0,4).map(m=>{const r=Math.max(0,m.label==='Calories'?Math.round(m.target-m.value):r1(m.target-m.value));return `<div class="sidebar-remaining-card"><div class="sidebar-remaining-card__label">${m.emoji} ${m.label}</div><div class="sidebar-remaining-card__value">${r}${m.unit}</div></div>`;}).join('');
   el.innerHTML=`${mHTML}<hr class="sidebar-divider"><div class="sidebar-minerals-title">Minerals</div>${minHTML}<hr class="sidebar-divider"><div class="sidebar-remaining-title">Remaining today</div><div class="sidebar-remaining-grid">${remHTML}`;
@@ -282,6 +302,7 @@ export function renderSidebarSummary(entries) {
 
 export function handleSyncFromSidebar(){handleSync();}
 
+// ── Meal sections ──────────────────────────────────────────────
 function renderMealSections(entries) {
   const container=document.getElementById('log-meals');if(!container)return;
   if(!entries||entries.length===0){showEmptyState();return;}
@@ -315,18 +336,20 @@ function renderMealSection(mealType,entries) {
     </div>`;
 }
 
-// ── Entry row ──────────────────────────────────────────────────
-// Layout: [left: name + macros] [right: Xunit | ★ | ✕]
+// ── Entry row — with inline nutrition preview on amount edit ───
 function renderEntryRow(entry) {
   const cals=Math.round(Number(entry.calories)||0);
   const p=Number(entry.protein)||0,c=Number(entry.carbs)||0,f=Number(entry.fat)||0,fi=Number(entry.fibre)||0;
   const isFav=isFavFood(entry.foodNo);
   return `
-    <div class="entry-row" data-row-index="${entry.rowIndex}" data-food-no="${entry.foodNo||''}" draggable="true">
+    <div class="entry-row" data-row-index="${entry.rowIndex}" data-food-no="${entry.foodNo||''}"
+      data-calories="${entry.calories}" data-protein="${entry.protein}"
+      data-carbs="${entry.carbs}" data-fat="${entry.fat}" data-fibre="${entry.fibre}"
+      data-base-amount="${entry.amount}" draggable="true">
       <div class="entry-row__main">
         <div class="entry-row__left">
           <span class="entry-row__name">${escHtml(entry.name)}</span>
-          <div class="entry-row__macros">
+          <div class="entry-row__macros" id="macros-${entry.rowIndex}">
             <span class="entry-row__cals">${cals} kcal</span>
             <span>P ${p.toFixed(1)}g</span>
             <span>C ${c.toFixed(1)}g</span>
@@ -372,14 +395,54 @@ async function handleToggleFav(btn) {
   catch(err){if(fs instanceof Set){wasFav?fs.add(foodNo):fs.delete(foodNo);}btn.classList.toggle('entry-row__star-btn--active',wasFav);console.error('[log] toggleFav:',err);}
 }
 
+// ── Amount inline edit with LIVE nutrition preview ─────────────
 function handleAmountEdit(btn) {
   if(btn.querySelector('input'))return;
-  const rowIndex=Number(btn.dataset.rowIndex),oldAmt=Number(btn.dataset.amount),unit=btn.dataset.unit;
-  btn.innerHTML=`<input class="entry-amount-input" type="number" value="${oldAmt}" min="1" step="1" inputmode="decimal" style="width:52px;text-align:right;font-size:13px">`;
+  const rowIndex  = Number(btn.dataset.rowIndex);
+  const oldAmt    = Number(btn.dataset.amount);
+  const unit      = btn.dataset.unit;
+  const entryRow  = btn.closest('.entry-row');
+  // Read original per-unit nutrients from data attributes
+  const baseCals  = Number(entryRow?.dataset.calories || 0);
+  const baseProt  = Number(entryRow?.dataset.protein  || 0);
+  const baseCarbs = Number(entryRow?.dataset.carbs    || 0);
+  const baseFat   = Number(entryRow?.dataset.fat      || 0);
+  const baseFibre = Number(entryRow?.dataset.fibre    || 0);
+  const baseAmt   = Number(entryRow?.dataset.baseAmount || oldAmt);
+  const macrosEl  = document.getElementById(`macros-${rowIndex}`);
+
+  // Replace badge with input — font-size:16px prevents iOS zoom
+  btn.innerHTML=`<input class="entry-amount-input" type="number" value="${oldAmt}" min="1" step="1" inputmode="decimal" style="width:52px;text-align:right;font-size:16px;-webkit-text-size-adjust:none">`;
   const input=btn.querySelector('input');input.focus();input.select();
-  const confirm=async()=>{const newAmt=parseFloat(input.value);if(!newAmt||newAmt<=0||newAmt===oldAmt){btn.textContent=`${oldAmt}${unit}`;return;}btn.textContent=`${newAmt}${unit}`;btn.dataset.amount=newAmt;await handleUpdate(rowIndex,newAmt);};
+
+  // Live update macro row while typing
+  function liveUpdate() {
+    if (!macrosEl) return;
+    const newAmt = parseFloat(input.value) || 0;
+    if (newAmt <= 0 || baseAmt <= 0) return;
+    const ratio = newAmt / baseAmt;
+    const cals  = Math.round(baseCals * ratio);
+    const p     = r1(baseProt  * ratio);
+    const c     = r1(baseCarbs * ratio);
+    const f     = r1(baseFat   * ratio);
+    const fi    = r1(baseFibre * ratio);
+    macrosEl.innerHTML = `<span class="entry-row__cals entry-row__cals--preview">${cals} kcal</span><span>P ${p}g</span><span>C ${c}g</span><span>F ${f}g</span><span>Fi ${fi}g</span>`;
+  }
+  input.addEventListener('input', liveUpdate);
+
+  const confirm=async()=>{
+    const newAmt=parseFloat(input.value);
+    if(!newAmt||newAmt<=0||newAmt===oldAmt){
+      btn.textContent=`${oldAmt}${unit}`;
+      // Restore original macros display
+      if(macrosEl){const ratio=oldAmt/baseAmt;macrosEl.innerHTML=`<span class="entry-row__cals">${Math.round(baseCals)} kcal</span><span>P ${r1(baseProt)}g</span><span>C ${r1(baseCarbs)}g</span><span>F ${r1(baseFat)}g</span><span>Fi ${r1(baseFibre)}g</span>`;}
+      return;
+    }
+    btn.textContent=`${newAmt}${unit}`;btn.dataset.amount=newAmt;
+    await handleUpdate(rowIndex,newAmt);
+  };
   input.addEventListener('blur',confirm);
-  input.addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();input.blur();}if(e.key==='Escape'){btn.textContent=`${oldAmt}${unit}`;}});
+  input.addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();input.blur();}if(e.key==='Escape'){btn.textContent=`${oldAmt}${unit}`;if(macrosEl){const ratio=oldAmt/baseAmt;macrosEl.innerHTML=`<span class="entry-row__cals">${Math.round(baseCals)} kcal</span><span>P ${r1(baseProt)}g</span><span>C ${r1(baseCarbs)}g</span><span>F ${r1(baseFat)}g</span><span>Fi ${r1(baseFibre)}g</span>`;};}});
 }
 
 async function handleUpdate(rowIndex,newAmount) {
@@ -403,7 +466,7 @@ async function handleDelete(rowIndex) {
     .catch(err=>{console.error('[log] handleDelete failed:',err);showToast('Delete failed — please refresh','error');invalidateLogCache(date);});
 }
 
-// ── Mac drag & drop ────────────────────────────────────────────
+// ── Mac drag ───────────────────────────────────────────────────
 function bindDragMove(container) {
   let dragRowIndex=null;
   container.addEventListener('dragstart',e=>{const row=e.target.closest('.entry-row');if(!row)return;dragRowIndex=Number(row.dataset.rowIndex);e.dataTransfer.effectAllowed='move';setTimeout(()=>row.style.opacity='0.4',0);});
@@ -415,61 +478,41 @@ function bindDragMove(container) {
   });
 }
 
-// ── iPhone touch drag — 500ms long-press, prevents text selection ─
+// ── iPhone touch drag — 500ms, no text select ─────────────────
 function bindTouchDrag(container) {
   let _dragRow=null,_dragRowIndex=null,_clone=null,_timer=null,_dragging=false;
-
-  function cleanup() {
+  function cleanup(){
     clearTimeout(_timer);_timer=null;_dragging=false;
     if(_clone){_clone.remove();_clone=null;}
     if(_dragRow){_dragRow.style.opacity='';_dragRow=null;}
     _dragRowIndex=null;
     container.querySelectorAll('.meal-section').forEach(s=>{s.classList.remove('meal-section--drag-over');s.classList.remove('meal-section--drop-target');});
-    // Restore text selection
-    document.body.style.webkitUserSelect='';
-    document.body.style.userSelect='';
+    document.body.style.webkitUserSelect='';document.body.style.userSelect='';
   }
-
   container.addEventListener('touchstart',e=>{
-    // Ignore taps on buttons — let them click normally
     if(e.target.closest('button'))return;
     const row=e.target.closest('.entry-row');if(!row)return;
-    cleanup();
-    _dragRow=row;_dragRowIndex=Number(row.dataset.rowIndex);
-    // 500ms long-press to activate drag
+    cleanup();_dragRow=row;_dragRowIndex=Number(row.dataset.rowIndex);
     _timer=setTimeout(()=>{
       _dragging=true;
-      // Suppress text selection
-      document.body.style.webkitUserSelect='none';
-      document.body.style.userSelect='none';
+      document.body.style.webkitUserSelect='none';document.body.style.userSelect='none';
       const rect=row.getBoundingClientRect();
-      _clone=row.cloneNode(true);
-      _clone.id='touch-drag-clone';
+      _clone=row.cloneNode(true);_clone.id='touch-drag-clone';
       _clone.style.cssText=`position:fixed;left:${rect.left}px;top:${rect.top}px;width:${rect.width}px;opacity:0.88;z-index:9999;pointer-events:none;background:white;border-radius:10px;box-shadow:0 6px 20px rgba(0,0,0,.22);transform:scale(1.02)`;
-      document.body.appendChild(_clone);
-      row.style.opacity='0.25';
+      document.body.appendChild(_clone);row.style.opacity='0.25';
       container.querySelectorAll('.meal-section').forEach(s=>s.classList.add('meal-section--drop-target'));
       if(navigator.vibrate)navigator.vibrate(25);
     },500);
   },{passive:true});
-
   container.addEventListener('touchmove',e=>{
-    if(!_dragging){
-      // Cancel timer on early move (scroll intent)
-      clearTimeout(_timer);_timer=null;
-      return;
-    }
-    e.preventDefault(); // Prevent scroll while dragging
+    if(!_dragging){clearTimeout(_timer);_timer=null;return;}
+    e.preventDefault();
     const touch=e.touches[0];
-    if(_clone){
-      _clone.style.top=(touch.clientY-_clone.offsetHeight/2)+'px';
-      _clone.style.left=(touch.clientX-_clone.offsetWidth/2)+'px';
-    }
+    if(_clone){_clone.style.top=(touch.clientY-_clone.offsetHeight/2)+'px';_clone.style.left=(touch.clientX-_clone.offsetWidth/2)+'px';}
     const el=document.elementFromPoint(touch.clientX,touch.clientY);
     const sec=el?.closest('.meal-section[data-meal-type]');
     container.querySelectorAll('.meal-section').forEach(s=>s.classList.toggle('meal-section--drag-over',s===sec&&sec!==null));
   },{passive:false});
-
   container.addEventListener('touchend',async e=>{
     clearTimeout(_timer);_timer=null;
     if(!_dragging){cleanup();return;}
@@ -477,10 +520,8 @@ function bindTouchDrag(container) {
     const el=document.elementFromPoint(touch.clientX,touch.clientY);
     const targetSection=el?.closest('.meal-section[data-meal-type]');
     const savedIndex=_dragRowIndex,savedMeal=targetSection?.dataset.mealType;
-    cleanup();
-    if(savedMeal&&savedIndex)await moveEntry(savedIndex,savedMeal);
+    cleanup();if(savedMeal&&savedIndex)await moveEntry(savedIndex,savedMeal);
   },{passive:true});
-
   container.addEventListener('touchcancel',()=>cleanup(),{passive:true});
 }
 
@@ -492,8 +533,7 @@ document.addEventListener('contextmenu',e=>{
   if(!entry)return;e.preventDefault();
   showContextMenu(e.clientX,e.clientY,rowIndex,entry.mealType);
 });
-
-function showContextMenu(x,y,rowIndex,currentMeal) {
+function showContextMenu(x,y,rowIndex,currentMeal){
   document.getElementById('ctx-move-menu')?.remove();
   const menu=document.createElement('div');menu.id='ctx-move-menu';menu.className='ctx-move-menu';
   menu.style.cssText=`position:fixed;left:${Math.min(x,window.innerWidth-180)}px;top:${Math.min(y,window.innerHeight-200)}px;z-index:9999`;
@@ -503,7 +543,7 @@ function showContextMenu(x,y,rowIndex,currentMeal) {
   setTimeout(()=>document.addEventListener('click',()=>menu.remove(),{once:true}),50);
 }
 
-async function moveEntry(rowIndex,targetMeal) {
+async function moveEntry(rowIndex,targetMeal){
   try{
     const date=store.state.currentDate||today();
     const entry=(store.state.dailyLog[date]||[]).find(e=>e.rowIndex===rowIndex);
@@ -515,12 +555,12 @@ async function moveEntry(rowIndex,targetMeal) {
   }catch(err){console.error('[log] moveEntry:',err);showToast('Failed to move','error');}
 }
 
-async function handleSync() {
+async function handleSync(){
   const date=store.state.currentDate||today();
   const btns=['log-sync-btn-mobile','sidebar-save-btn'].map(id=>document.getElementById(id)).filter(Boolean);
   btns.forEach(b=>{b.disabled=true;b.textContent='Saving…';});
   try{await syncDailySummary(date);showToast('Saved to DailySummary ✓','success');}
-  catch(err){console.error('[log] handleSync:',err);showToast('Save failed','error');}
+  catch(err){console.error('[log] handleSync:',err);showToast('Save failed — check connection','error');}
   finally{btns.forEach(b=>{b.disabled=false;b.textContent='Save Summary';});}
 }
 
@@ -528,9 +568,6 @@ function showEmptyState(){
   const el=document.getElementById('log-meals');
   if(el)el.innerHTML=`<div class="log-empty-state"><span class="log-empty-state__icon">🥗</span><p class="log-empty-state__text">No entries yet</p><p class="log-empty-state__sub">Search above to add foods</p></div>`;
 }
-
-function sumNutrients(entries){
-  return(entries||[]).reduce((acc,e)=>({calories:acc.calories+(Number(e.calories)||0),protein:acc.protein+(Number(e.protein)||0),carbs:acc.carbs+(Number(e.carbs)||0),fat:acc.fat+(Number(e.fat)||0),fibre:acc.fibre+(Number(e.fibre)||0),sodium:acc.sodium+(Number(e.sodium)||0),potassium:acc.potassium+(Number(e.potassium)||0)}),{calories:0,protein:0,carbs:0,fat:0,fibre:0,sodium:0,potassium:0});
-}
+function sumNutrients(entries){return(entries||[]).reduce((acc,e)=>({calories:acc.calories+(Number(e.calories)||0),protein:acc.protein+(Number(e.protein)||0),carbs:acc.carbs+(Number(e.carbs)||0),fat:acc.fat+(Number(e.fat)||0),fibre:acc.fibre+(Number(e.fibre)||0),sodium:acc.sodium+(Number(e.sodium)||0),potassium:acc.potassium+(Number(e.potassium)||0)}),{calories:0,protein:0,carbs:0,fat:0,fibre:0,sodium:0,potassium:0});}
 function escHtml(s){return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
 function escAttr(s){return String(s||'').replace(/"/g,'&quot;').replace(/'/g,'&#39;');}
