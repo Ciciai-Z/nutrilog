@@ -1,5 +1,6 @@
 // ============================================================
 // utils.js — 纯工具函数（无副作用，无外部依赖）
+// Updated: B4 (date format changed to ddd,d/m/yy)
 // ============================================================
 
 /**
@@ -11,29 +12,31 @@ export function calcCalories(protein, carbs, fat) {
 }
 
 /**
- * 格式化日期为 ddd,M/d/yy（如 Wed,4/3/26）
+ * 格式化日期为 ddd,d/m/yy（如 Wed,4/3/26 = 4日3月2026）
  * @param {Date} date
  * @returns {string}
  */
 export function formatDate(date) {
   const days = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
   const d   = days[date.getDay()];
-  const m   = date.getMonth() + 1;
   const day = date.getDate();
+  const m   = date.getMonth() + 1;
   const yy  = String(date.getFullYear()).slice(-2);
-  return `${d},${m}/${day}/${yy}`;
+  return `${d},${day}/${m}/${yy}`;
 }
 
 /**
- * 解析 ddd,M/d/yy 格式为 Date 对象
- * @param {string} str  如 "Wed,4/3/26"
+ * 解析 ddd,d/m/yy 格式为 Date 对象
+ * @param {string} str 如 "Wed,4/3/26" = 4日3月2026
  * @returns {Date}
  */
 export function parseDate(str) {
-  const parts = str.split(',');
+  // 兼容带空格的格式 "Wed, 4/3/26"
+  const normalised = str.trim().replace(/,\s+/, ',');
+  const parts = normalised.split(',');
   if (parts.length < 2) return new Date();
-  const [m, d, yy] = parts[1].split('/');
-  return new Date(2000 + parseInt(yy), parseInt(m) - 1, parseInt(d));
+  const [day, m, yy] = parts[1].split('/');
+  return new Date(2000 + parseInt(yy), parseInt(m) - 1, parseInt(day));
 }
 
 /**

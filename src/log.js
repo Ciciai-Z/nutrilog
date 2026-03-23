@@ -8,7 +8,7 @@ import { CONFIG }      from '../config.js';
 import { getDailyLog } from './api.js';
 import { store }       from './store.js';
 import { showToast }   from './ui.js';
-import { today, formatDate, calcCalories } from './utils.js';
+import { today, formatDate, parseDate, calcCalories } from './utils.js';
 
 // ── Init ─────────────────────────────────────────────────────
 
@@ -49,7 +49,7 @@ function renderLogShell(date) {
 
 async function navigateDate(delta) {
   const current = store.state.currentDate || today();
-  const d       = parseLogDate(current);
+  const d       = parseDate(current);
   d.setDate(d.getDate() + delta);
   const newDate = formatDate(d);
   store.setCurrentDate(newDate);
@@ -238,14 +238,6 @@ function sumNutrients(entries) {
     acc.fibre    += Number(e.fibre)    || 0;
     return acc;
   }, { calories: 0, protein: 0, carbs: 0, fat: 0, fibre: 0 });
-}
-
-function parseLogDate(dateStr) {
-  // ddd,M/d/yy → Date object
-  const parts = dateStr.split(',');
-  if (parts.length < 2) return new Date();
-  const [m, d, yy] = parts[1].split('/');
-  return new Date(2000 + Number(yy), Number(m) - 1, Number(d));
 }
 
 function escapeHtml(str) {

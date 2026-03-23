@@ -223,17 +223,20 @@ function getDailyLog(params) {
   const COL     = CONFIG.columns.dailyLog;
   const entries = [];
 
+  // Normalise: remove spaces after comma so "Wed, 4/3/26" == "Wed,4/3/26"
+  const normalise = s => String(s).trim().replace(/,\s+/, ',');
+  const targetDate = normalise(date);
+
   for (let i = 1; i < rows.length; i++) {
     const row = rows[i];
     if (!row[COL.date]) continue;
-    if (String(row[COL.date]).trim() !== date) continue;
+    if (normalise(row[COL.date]) !== targetDate) continue;
 
     entries.push({
       rowIndex:  i + 1,
       date:      String(row[COL.date]),
       mealType:  String(row[COL.mealType]  || ''),
-      foodNo:    row[COL.foodNo]  ? Number(row[COL.foodNo])  : null,
-      mealNo:    row[COL.mealNo]  ? String(row[COL.mealNo])  : null,
+      foodNo:    row[COL.foodNo] ? Number(row[COL.foodNo]) : null,
       name:      String(row[COL.name]      || ''),
       amount:    Number(row[COL.amount]    || 0),
       unit:      String(row[COL.unit]      || 'g'),

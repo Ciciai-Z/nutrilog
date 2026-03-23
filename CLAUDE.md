@@ -113,7 +113,7 @@ DATE | MEAL_TYPE | FOOD_NO | MEAL_NO | NAME | AMOUNT | UNIT |
 CALORIES | PROTEIN | CARBS | FAT | FIBRE | SODIUM | POTASSIUM | CREATED_DATETIME
 ```
 
-- DATE 格式：`ddd,M/d/yy`（如 `Wed,4/3/26`）
+- DATE 格式：`ddd,d/m/yy`（如 `Wed,4/3/26` = 4日3月2026）
 - MEAL_TYPE 枚举：`Breakfast` | `Lunch` | `Dinner` | `Snacks` | `Other`
 - FOOD_NO：FK → NutritionDB.NO.（1–2500）或 CustomFoods.NO.（50001+）
 - MEAL_NO：FK → Meals.MEAL_NO.（如 `meal001`）
