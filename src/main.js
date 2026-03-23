@@ -1,11 +1,11 @@
 // ============================================================
 // main.js — Router
-// Fixed: mobile tab guard (no reload on re-visit), sidebar refresh
+// Fixed: date pill → date picker (any date), no duplicate date display
 // ============================================================
 import { isLoggedIn, renderAuthScreen, logout } from './auth.js';
 import { store } from './store.js';
 import { getSettings } from './api.js';
-import { today, formatDate } from './utils.js';
+import { today, formatDate, parseDate } from './utils.js';
 import { initLog, renderSidebarSummary } from './log.js';
 import { initSettings } from './settings.js';
 import { initFavourites } from './search.js';
@@ -39,20 +39,43 @@ function renderAppShell() {
           <span class="tab-bar__icon">⚙️</span>
           <span class="tab-bar__label">Settings</span>
         </button>
-        <span class="nav-date-pill" id="nav-date-pill"></span>
+        <!-- Date pill — clickable date picker -->
+        <div class="nav-date-wrap" id="nav-date-wrap">
+          <button class="nav-date-pill" id="nav-date-pill" title="Change date"></button>
+          <input type="date" id="nav-date-input" class="nav-date-input" aria-label="Select date">
+        </div>
         <button class="tab-bar__item tab-bar__item--logout" id="logout-btn">
           <span class="tab-bar__icon">🔓</span>
           <span class="tab-bar__label">Logout</span>
         </button>
       </nav>
     </div>`;
-  updateDatePill();
+  setupDatePicker();
   setupTabBar();
   navigateTo('today');
 }
 
-// ── Date pill ──────────────────────────────────────────────────
-function formatPillDate(dateStr) {
+// ── Date picker ────────────────────────────────────────────────
+function internalToISO(dateStr) {
+  if (!dateStr) return '';
+  try {
+    const parts = dateStr.replace(/^[^,]+,/, '').split('/');
+    const d = parseInt(parts[0]), m = parseInt(parts[1]), y = 2000 + parseInt(parts[2]);
+    return `${y}-${String(m).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+  } catch { return ''; }
+}
+
+function ISOToInternal(iso) {
+  if (!iso) return '';
+  try {
+    const [y, m, d] = iso.split('-').map(Number);
+    const date = new Date(y, m-1, d);
+    const DOW = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+    return `${DOW[date.getDay()]},${d}/${m}/${String(y).slice(-2)}`;
+  } catch { return ''; }
+}
+
+function formatPillDisplay(dateStr) {
   if (!dateStr) return '';
   try {
     const parts = dateStr.replace(/^[^,]+,/, '').split('/');
@@ -62,14 +85,61 @@ function formatPillDate(dateStr) {
     const d     = new Date(year, month, day);
     const DOW = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
     const MON = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
-    return `${DOW[d.getDay()]} ${day} ${MON[month]}`;
+    const isToday = dateStr === today();
+    return isToday
+      ? `Today · ${DOW[d.getDay()]}, ${day} ${MON[month]}`
+      : `${DOW[d.getDay()]}, ${day} ${MON[month]}`;
   } catch { return dateStr; }
 }
 
 function updateDatePill() {
-  const pill = document.getElementById('nav-date-pill');
+  const pill  = document.getElementById('nav-date-pill');
+  const input = document.getElementById('nav-date-input');
   if (!pill) return;
-  pill.textContent = formatPillDate(store.state.currentDate || today());
+  const d = store.state.currentDate || today();
+  pill.textContent = formatPillDisplay(d);
+  if (input) input.value = internalToISO(d);
+}
+
+function setupDatePicker() {
+  const pill  = document.getElementById('nav-date-pill');
+  const input = document.getElementById('nav-date-input');
+  if (!pill || !input) return;
+
+  updateDatePill();
+
+  pill.addEventListener('click', () => {
+    input.showPicker?.() || input.click();
+  });
+
+  input.addEventListener('change', async () => {
+    const iso = input.value;
+    if (!iso) return;
+    const newDate = ISOToInternal(iso);
+    if (!newDate || newDate === store.state.currentDate) return;
+    store.setCurrentDate(newDate);
+    updateDatePill();
+
+    // Reload log for selected date if on Today tab
+    if (currentTab === 'today') {
+      const isMac = window.innerWidth >= 768;
+      const { initLog } = await import('./log.js');
+      if (isMac) {
+        const left = document.getElementById('mac-left');
+        if (left) {
+          left.innerHTML = '<div id="view-today" class="page"></div>';
+          await initLog(true);
+        }
+      } else {
+        const content = document.getElementById('main-content');
+        if (content) {
+          content.innerHTML = '<div id="view-today" class="page"></div>';
+          await initLog(false);
+        }
+      }
+    }
+    console.log('[main] date changed →', newDate);
+  });
 }
 
 // ── Tab bar ────────────────────────────────────────────────────
@@ -92,13 +162,10 @@ export async function navigateTo(tab) {
   const isSidebarTab = isMac && ['today','favourites','meals'].includes(tab);
   const wasSidebarTab= isMac && ['today','favourites','meals'].includes(currentTab);
 
-  // Mac sidebar tabs: skip re-init if same tab and shell intact
+  // Skip re-init: same sidebar tab with shell intact
   if (tab === currentTab && isSidebarTab && document.getElementById('mac-left')) return;
-
-  // Mobile + non-sidebar tabs: skip re-init if same tab AND content already rendered
-  // Exception: always re-render settings (it's stateful)
+  // Skip re-init: same non-sidebar tab (except settings)
   if (tab === currentTab && !isSidebarTab && tab !== 'settings') {
-    // Just update active state and return
     document.querySelectorAll('.tab-bar__item[data-tab]').forEach(btn =>
       btn.classList.toggle('tab-bar__item--active', btn.dataset.tab === tab));
     return;
@@ -111,32 +178,25 @@ export async function navigateTo(tab) {
     btn.classList.toggle('tab-bar__item--active', btn.dataset.tab === tab));
 
   const content = document.getElementById('main-content');
-
   if (isSidebarTab) { await renderWithSidebar(tab, content); return; }
-
   if (isMac) macShellRendered = false;
 
   switch (tab) {
     case 'today':
       content.innerHTML = '<div id="view-today" class="page"></div>';
-      await initLog(false);
-      break;
+      await initLog(false); break;
     case 'favourites':
       content.innerHTML = '<div id="view-favourites" class="page"></div>';
-      await initFavourites(false);
-      break;
+      await initFavourites(false); break;
     case 'meals':
-      content.innerHTML = placeholderPage('Meals', '🍽', 'Meal templates coming in B8');
-      break;
+      content.innerHTML = placeholderPage('Meals','🍽','Meal templates coming in B8'); break;
     case 'history':
-      content.innerHTML = placeholderPage('History', '📅', 'History coming in B9');
-      break;
+      content.innerHTML = placeholderPage('History','📅','History coming in B9'); break;
     case 'settings':
       content.innerHTML = '<div id="view-settings" class="page"></div>';
-      initSettings();
-      break;
+      initSettings(); break;
     default:
-      content.innerHTML = placeholderPage(tab, '🔧', `${tab} coming soon`);
+      content.innerHTML = placeholderPage(tab,'🔧',`${tab} coming soon`);
   }
 }
 
@@ -165,15 +225,14 @@ async function renderWithSidebar(tab, content) {
     case 'today':
       left.innerHTML = '<div id="view-today" class="page"></div>';
       await initLog(true);
-      // sidebar is refreshed inside initLog via renderLog → renderSidebarSummary
       break;
     case 'favourites':
       left.innerHTML = '<div id="view-favourites" class="page"></div>';
-      renderSidebarSummary(); // show current data immediately
+      renderSidebarSummary();
       await initFavourites(true);
       break;
     case 'meals':
-      left.innerHTML = placeholderPage('Meals', '🍽', 'Meal templates coming in B8');
+      left.innerHTML = placeholderPage('Meals','🍽','Meal templates coming in B8');
       renderSidebarSummary();
       break;
   }
@@ -183,9 +242,7 @@ export function refreshSidebar()   { renderSidebarSummary(); }
 export function notifyDateChange() { updateDatePill(); }
 
 function handleLogout() {
-  currentTab       = null;
-  macShellRendered = false;
-  // Clear cached state so next login starts fresh
+  currentTab = null; macShellRendered = false;
   store.state.foods      = null;
   store.state.favourites = null;
   store.state.dailyLog   = {};
@@ -194,16 +251,12 @@ function handleLogout() {
 }
 
 function placeholderPage(title, icon, note) {
-  return `
-    <div class="page">
-      <header class="page-header">
-        <h2 class="page-header__title">${title}</h2>
-      </header>
-      <div class="page-placeholder">
-        <span class="page-placeholder__icon">${icon}</span>
-        <p class="page-placeholder__text">${note}</p>
-      </div>
-    </div>`;
+  return `<div class="page">
+    <header class="page-header"><h2 class="page-header__title">${title}</h2></header>
+    <div class="page-placeholder">
+      <span class="page-placeholder__icon">${icon}</span>
+      <p class="page-placeholder__text">${note}</p>
+    </div></div>`;
 }
 
 // ── Login ──────────────────────────────────────────────────────
@@ -217,7 +270,7 @@ async function onLogin() {
     console.error('[main] failed to load settings:', ex.message);
   }
   renderAppShell();
-  // Preload in background
+  // Preload foods + favourites in background
   Promise.all([
     import('./search.js').then(m => m.ensureFoodsLoaded()),
     import('./search.js').then(m => m.ensureFavouritesLoaded?.()),
