@@ -107,16 +107,18 @@ function updateSettings(params) {
   const token = params.token || '';
   if (!verifyToken(token)) return { ok: false, error: 'Unauthorized' };
 
-  let payload;
+  let settings;
   try {
-    payload = JSON.parse(decodeURIComponent(params.payload || '{}'));
+    const payload = JSON.parse(decodeURIComponent(params.payload || '{}'));
+    // api.js wraps data as { settings: { key: value } }
+    settings = payload.settings || payload;
   } catch (e) {
     return { ok: false, error: 'Invalid payload JSON' };
   }
 
-  // Never overwrite pin_hash
-  delete payload['pin_hash'];
-  delete payload['session_token'];
+  // Never overwrite pin_hash or session_token
+  delete settings['pin_hash'];
+  delete settings['session_token'];
 
   const sh   = getSheet(CONFIG.sheets.settings);
   const data = sh.getDataRange().getValues();
@@ -125,7 +127,7 @@ function updateSettings(params) {
     keyIndex[data[i][0]] = i + 1;
   }
 
-  for (const [key, value] of Object.entries(payload)) {
+  for (const [key, value] of Object.entries(settings)) {
     if (keyIndex[key]) {
       sh.getRange(keyIndex[key], 2).setValue(value);
     } else {
