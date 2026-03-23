@@ -160,6 +160,7 @@ async function renderWithSidebar(tab, content) {
     case 'today':
       left.innerHTML = '<div id="view-today" class="page"></div>';
       await initLog(true);
+      renderSidebarSummary(); // refresh after log data loaded
       break;
     case 'favourites':
       left.innerHTML = '<div id="view-favourites" class="page"></div>';

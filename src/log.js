@@ -297,6 +297,8 @@ async function loadAndRender(date) {
 function renderLog(date, entries) {
   renderMacroStrip(entries);
   renderMealSections(entries);
+  // Always refresh sidebar with latest data
+  renderSidebarSummary(entries);
 }
 
 // ── iPhone macro strip ─────────────────────────────────────────
