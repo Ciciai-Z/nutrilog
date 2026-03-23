@@ -1,7 +1,7 @@
 # NutriLog — Optimization TODO
 
 > 记录待办的优化想法，不影响当前开发进度，在合适的 Block 或 B9 Polish 阶段实现。
-> Last updated: 2026-03-23
+> Last updated: 2026-03-23 (B4 adds TODO-05, TODO-06)
 
 ---
 
@@ -28,6 +28,22 @@
 - **描述：** Tab Bar 的菜单标签字体偏大或视觉重量不够精致，需要调整
 - **实现思路：** 在 `styles/main.css` 的 `.tab-bar__label` 调整 `font-size` 和 `font-weight`；Mac 端顶部导航同步优化
 - **优先级：** 低
+- **建议时机：** B9 Polish
+
+---
+
+### TODO-05 · Mac 宽屏 Today Log 条目横排显示
+- **描述：** 在 Mac 宽屏下，Today Log 的条目应横排显示（多列布局），充分利用宽屏空间，而不是单列竖排
+- **实现思路：** 在 `styles/main.css` 的 `@media (min-width: 768px)` 里给 `.meal-section__entries` 加 `display: grid; grid-template-columns: repeat(2, 1fr)`
+- **优先级：** 中
+- **建议时机：** B9 Polish
+
+---
+
+### TODO-06 · Mac 宽屏 Today 日期点击弹出日期选择器
+- **描述：** 在 Mac 宽屏下，Today 页面的日期导航改为点击日期弹出日历选择器，而不是只有左右箭头
+- **实现思路：** 在 `log.js` 的 `renderLogShell` 里，Mac 端（`window.innerWidth >= 768`）将日期标签改为 `<input type="date">` 或自定义 popover 日历；移动端保持左右箭头不变
+- **优先级：** 中
 - **建议时机：** B9 Polish
 
 ---

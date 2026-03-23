@@ -883,6 +883,12 @@ ul { list-style: none; }
   white-space: nowrap;
 }
 
+.entry-row__minerals {
+  font-size: 0.7rem;
+  color: var(--color-text-secondary);
+  white-space: nowrap;
+}
+
 /* ── Empty / loading states ──────────────────────────────────*/
 
 .log-empty-state {

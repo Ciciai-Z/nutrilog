@@ -194,6 +194,8 @@ function renderMealSection(mealType, entries) {
 
 function renderEntryRow(entry) {
   const cals = Math.round(Number(entry.calories) || 0);
+  const na   = Math.round(Number(entry.sodium)    || 0);
+  const k    = Math.round(Number(entry.potassium) || 0);
   return `
     <div class="entry-row" data-row-index="${entry.rowIndex}">
       <div class="entry-row__info">
@@ -206,6 +208,9 @@ function renderEntryRow(entry) {
           P ${Number(entry.protein).toFixed(1)} &nbsp;
           C ${Number(entry.carbs).toFixed(1)} &nbsp;
           F ${Number(entry.fat).toFixed(1)}
+        </span>
+        <span class="entry-row__minerals">
+          Na ${na}mg &nbsp; K ${k}mg
         </span>
       </div>
     </div>
