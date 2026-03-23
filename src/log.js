@@ -1,14 +1,15 @@
 // ============================================================
 // NutriLog — log.js
-// Block B4: Today Log — read-only display
-// Block B5: will add CRUD interactions
+// B4: read-only display
+// B5: add/delete/update entry interactions + Sync
 // ============================================================
 
-import { CONFIG }      from '../config.js';
-import { getDailyLog } from './api.js';
-import { store }       from './store.js';
-import { showToast }   from './ui.js';
-import { today, formatDate, parseDate, calcCalories } from './utils.js';
+import { CONFIG }                                          from '../config.js';
+import { getDailyLog, deleteLogEntry, updateLogEntry,
+         syncDailySummary }                                from './api.js';
+import { store }                                           from './store.js';
+import { showToast }                                       from './ui.js';
+import { today, formatDate, parseDate, calcCalories }      from './utils.js';
 
 // ── Init ─────────────────────────────────────────────────────
 
@@ -20,11 +21,18 @@ export async function initLog() {
   console.log('[log] initLog → ready');
 }
 
-// ── Shell (date nav + empty containers) ──────────────────────
+// Called from search.js after a food is added
+export function invalidateLogCache(date) {
+  delete store.state.dailyLog[date];
+}
+
+// ── Shell ─────────────────────────────────────────────────────
 
 function renderLogShell(date) {
   const view = document.getElementById('view-today');
   if (!view) return;
+
+  const isToday = date === formatDate(new Date());
 
   view.innerHTML = `
     <div class="log-page">
@@ -33,16 +41,22 @@ function renderLogShell(date) {
         <div class="log-date-wrap">
           <h2 class="page-header__title" id="log-date-label">${date}</h2>
         </div>
-        <button class="log-nav-btn" id="log-next" aria-label="Next day">›</button>
+        <button class="log-nav-btn" id="log-next" aria-label="Next day"
+          ${isToday ? 'disabled' : ''}>›</button>
       </header>
-
       <div id="log-summary-strip" class="log-summary-strip"></div>
       <div id="log-meals"         class="log-meals"></div>
+      <div class="log-sync-wrap">
+        <button id="log-sync-btn" class="btn btn--ghost log-sync-btn">
+          ${CONFIG.labels.syncButton}
+        </button>
+      </div>
     </div>
   `;
 
   document.getElementById('log-prev')?.addEventListener('click', () => navigateDate(-1));
   document.getElementById('log-next')?.addEventListener('click', () => navigateDate(1));
+  document.getElementById('log-sync-btn')?.addEventListener('click', handleSync);
 }
 
 // ── Date navigation ───────────────────────────────────────────
@@ -54,12 +68,10 @@ async function navigateDate(delta) {
   const newDate = formatDate(d);
   store.setCurrentDate(newDate);
 
-  const label = document.getElementById('log-date-label');
-  if (label) label.textContent = newDate;
-
-  // Disable next button on today
+  const label   = document.getElementById('log-date-label');
   const nextBtn = document.getElementById('log-next');
-  if (nextBtn) nextBtn.disabled = formatDate(new Date()) === newDate;
+  if (label)   label.textContent = newDate;
+  if (nextBtn) nextBtn.disabled  = newDate === formatDate(new Date());
 
   await loadAndRender(newDate);
 }
@@ -68,12 +80,9 @@ async function navigateDate(delta) {
 
 async function loadAndRender(date) {
   showLoadingState();
-
   try {
-    // Check cache first
     if (!store.state.dailyLog[date]) {
-      const entries = await getDailyLog(date);
-      store.state.dailyLog[date] = entries;
+      store.state.dailyLog[date] = await getDailyLog(date);
     }
     renderLog(date, store.state.dailyLog[date]);
   } catch (err) {
@@ -84,25 +93,25 @@ async function loadAndRender(date) {
 }
 
 function showLoadingState() {
-  const meals = document.getElementById('log-meals');
-  if (meals) meals.innerHTML = '<p class="log-loading">Loading…</p>';
+  const el = document.getElementById('log-meals');
+  if (el) el.innerHTML = '<p class="log-loading">Loading…</p>';
 }
 
-// ── Render log ────────────────────────────────────────────────
+// ── Render ────────────────────────────────────────────────────
 
 function renderLog(date, entries) {
   renderSummaryStrip(entries);
   renderMealSections(entries);
 }
 
-// ── Summary strip (macro progress bars) ──────────────────────
+// ── Summary strip ─────────────────────────────────────────────
 
 function renderSummaryStrip(entries) {
   const strip = document.getElementById('log-summary-strip');
   if (!strip) return;
 
-  const totals = sumNutrients(entries);
-  const s      = store.state.settings || {};
+  const totals  = sumNutrients(entries);
+  const s       = store.state.settings || {};
   const targets = {
     calories: Number(s.calorie_target) || 0,
     protein:  Number(s.protein_target) || 0,
@@ -112,40 +121,34 @@ function renderSummaryStrip(entries) {
   };
 
   const macros = [
-    { key: 'calories', label: 'Calories', unit: 'kcal', value: totals.calories, target: targets.calories },
-    { key: 'protein',  label: 'Protein',  unit: 'g',    value: totals.protein,  target: targets.protein  },
-    { key: 'carbs',    label: 'Carbs',    unit: 'g',    value: totals.carbs,    target: targets.carbs    },
-    { key: 'fat',      label: 'Fat',      unit: 'g',    value: totals.fat,      target: targets.fat      },
-    { key: 'fibre',    label: 'Fibre',    unit: 'g',    value: totals.fibre,    target: targets.fibre    },
+    { label: 'Calories', unit: 'kcal', value: totals.calories, target: targets.calories },
+    { label: 'Protein',  unit: 'g',    value: totals.protein,  target: targets.protein  },
+    { label: 'Carbs',    unit: 'g',    value: totals.carbs,    target: targets.carbs    },
+    { label: 'Fat',      unit: 'g',    value: totals.fat,      target: targets.fat      },
+    { label: 'Fibre',    unit: 'g',    value: totals.fibre,    target: targets.fibre    },
   ];
 
-  strip.innerHTML = `
-    <div class="summary-strip">
-      ${macros.map(m => renderMacroBar(m)).join('')}
-    </div>
-  `;
+  strip.innerHTML = `<div class="summary-strip">${macros.map(renderMacroBar).join('')}</div>`;
 }
 
 function renderMacroBar({ label, unit, value, target }) {
-  const pct      = target > 0 ? Math.min((value / target) * 100, 150) : 0;
-  const ratio    = target > 0 ? value / target : 0;
+  const pct       = target > 0 ? Math.min((value / target) * 100, 150) : 0;
+  const ratio     = target > 0 ? value / target : 0;
   const fillClass = ratio > CONFIG.targets.dangerThreshold  ? 'progress-bar__fill--danger'
                   : ratio > CONFIG.targets.warningThreshold ? 'progress-bar__fill--warning'
                   : 'progress-bar__fill--normal';
-  const displayed = label === 'Calories' ? Math.round(value) : value.toFixed(1);
-  const tDisplay  = label === 'Calories' ? Math.round(target) : target;
-
+  const disp  = label === 'Calories' ? Math.round(value) : value.toFixed(1);
+  const tDisp = label === 'Calories' ? Math.round(target) : target;
   return `
     <div class="summary-macro">
       <div class="summary-macro__header">
         <span class="summary-macro__label">${label}</span>
-        <span class="summary-macro__value">${displayed}<span class="summary-macro__target"> / ${tDisplay}${unit}</span></span>
+        <span class="summary-macro__value">${disp}<span class="summary-macro__target"> / ${tDisp}${unit}</span></span>
       </div>
       <div class="progress-bar">
         <div class="progress-bar__fill ${fillClass}" style="width:${pct}%"></div>
       </div>
-    </div>
-  `;
+    </div>`;
 }
 
 // ── Meal sections ─────────────────────────────────────────────
@@ -153,13 +156,8 @@ function renderMacroBar({ label, unit, value, target }) {
 function renderMealSections(entries) {
   const container = document.getElementById('log-meals');
   if (!container) return;
+  if (!entries || entries.length === 0) { showEmptyState(); return; }
 
-  if (!entries || entries.length === 0) {
-    showEmptyState();
-    return;
-  }
-
-  // Group by mealType in canonical order
   const groups = {};
   CONFIG.labels.mealTypes.forEach(t => { groups[t] = []; });
   entries.forEach(e => {
@@ -173,12 +171,11 @@ function renderMealSections(entries) {
     .join('');
 
   container.innerHTML = html || '<p class="log-empty">No entries for this day.</p>';
+  bindEntryEvents(container);
 }
 
 function renderMealSection(mealType, entries) {
   const sectionCals = entries.reduce((s, e) => s + (Number(e.calories) || 0), 0);
-  const rows = entries.map(e => renderEntryRow(e)).join('');
-
   return `
     <div class="meal-section">
       <div class="meal-section__header">
@@ -186,50 +183,188 @@ function renderMealSection(mealType, entries) {
         <span class="meal-section__cals">${Math.round(sectionCals)} kcal</span>
       </div>
       <div class="meal-section__entries">
-        ${rows}
+        ${entries.map(renderEntryRow).join('')}
       </div>
-    </div>
-  `;
+    </div>`;
 }
 
 function renderEntryRow(entry) {
   const cals = Math.round(Number(entry.calories) || 0);
-  const na   = Math.round(Number(entry.sodium)    || 0);
-  const k    = Math.round(Number(entry.potassium) || 0);
+  const na   = Math.round(Number(entry.sodium)   || 0);
+  const k    = Math.round(Number(entry.potassium)|| 0);
   return `
     <div class="entry-row" data-row-index="${entry.rowIndex}">
-      <div class="entry-row__info">
-        <span class="entry-row__name">${escapeHtml(entry.name)}</span>
-        <span class="entry-row__meta">${entry.amount}${entry.unit}</span>
+      <div class="entry-row__swipe-container">
+        <div class="entry-row__content">
+          <div class="entry-row__info">
+            <span class="entry-row__name">${escapeHtml(entry.name)}</span>
+            <button class="entry-row__amount-btn" data-row-index="${entry.rowIndex}"
+                    data-amount="${entry.amount}" data-unit="${entry.unit}">
+              ${entry.amount}${entry.unit}
+            </button>
+          </div>
+          <div class="entry-row__nutrients">
+            <span class="entry-row__cals">${cals} kcal</span>
+            <span class="entry-row__macros">P ${Number(entry.protein).toFixed(1)} &nbsp; C ${Number(entry.carbs).toFixed(1)} &nbsp; F ${Number(entry.fat).toFixed(1)}</span>
+            <span class="entry-row__minerals">Na ${na}mg &nbsp; K ${k}mg</span>
+          </div>
+        </div>
+        <button class="entry-row__delete-btn" data-row-index="${entry.rowIndex}"
+                aria-label="Delete entry">Delete</button>
       </div>
-      <div class="entry-row__nutrients">
-        <span class="entry-row__cals">${cals} kcal</span>
-        <span class="entry-row__macros">
-          P ${Number(entry.protein).toFixed(1)} &nbsp;
-          C ${Number(entry.carbs).toFixed(1)} &nbsp;
-          F ${Number(entry.fat).toFixed(1)}
-        </span>
-        <span class="entry-row__minerals">
-          Na ${na}mg &nbsp; K ${k}mg
-        </span>
-      </div>
-    </div>
+    </div>`;
+}
+
+// ── Events ────────────────────────────────────────────────────
+
+function bindEntryEvents(container) {
+  // Amount inline edit
+  container.querySelectorAll('.entry-row__amount-btn').forEach(btn => {
+    btn.addEventListener('click', () => handleAmountEdit(btn));
+  });
+
+  // Swipe-to-delete (touch)
+  container.querySelectorAll('.entry-row').forEach(row => {
+    bindSwipeDelete(row);
+  });
+
+  // Delete button click (also for mouse on desktop)
+  container.querySelectorAll('.entry-row__delete-btn').forEach(btn => {
+    btn.addEventListener('click', () => handleDelete(Number(btn.dataset.rowIndex)));
+  });
+}
+
+// ── Amount inline edit ────────────────────────────────────────
+
+function handleAmountEdit(btn) {
+  if (btn.querySelector('input')) return; // already editing
+
+  const rowIndex  = Number(btn.dataset.rowIndex);
+  const oldAmount = Number(btn.dataset.amount);
+  const unit      = btn.dataset.unit;
+
+  btn.innerHTML = `
+    <input class="entry-amount-input" type="number" value="${oldAmount}"
+           min="1" step="1" inputmode="decimal"
+           style="width:60px;text-align:right;" />
   `;
+
+  const input = btn.querySelector('input');
+  input.focus();
+  input.select();
+
+  const confirm = async () => {
+    const newAmount = parseFloat(input.value);
+    if (!newAmount || newAmount <= 0 || newAmount === oldAmount) {
+      btn.textContent = `${oldAmount}${unit}`;
+      return;
+    }
+    btn.textContent = `${newAmount}${unit}`;
+    btn.dataset.amount = newAmount;
+    await handleUpdate(rowIndex, newAmount);
+  };
+
+  input.addEventListener('blur',  confirm);
+  input.addEventListener('keydown', e => {
+    if (e.key === 'Enter') { e.preventDefault(); input.blur(); }
+    if (e.key === 'Escape') {
+      btn.textContent = `${oldAmount}${unit}`;
+    }
+  });
+}
+
+async function handleUpdate(rowIndex, newAmount) {
+  try {
+    await updateLogEntry(rowIndex, newAmount);
+    const date = store.state.currentDate || today();
+    invalidateLogCache(date);
+    await loadAndRender(date);
+    console.log(`[log] handleUpdate → row=${rowIndex} amount=${newAmount}`);
+  } catch (err) {
+    console.error('[log] handleUpdate →', err);
+    showToast('Failed to update amount', 'error');
+  }
+}
+
+// ── Swipe to delete ───────────────────────────────────────────
+
+function bindSwipeDelete(row) {
+  let startX = 0, isDragging = false;
+  const container = row.querySelector('.entry-row__swipe-container');
+  if (!container) return;
+
+  row.addEventListener('touchstart', e => {
+    startX     = e.touches[0].clientX;
+    isDragging = true;
+  }, { passive: true });
+
+  row.addEventListener('touchmove', e => {
+    if (!isDragging) return;
+    const dx = e.touches[0].clientX - startX;
+    if (dx < 0) {
+      container.style.transform = `translateX(${Math.max(dx, -80)}px)`;
+    }
+  }, { passive: true });
+
+  row.addEventListener('touchend', e => {
+    if (!isDragging) return;
+    isDragging = false;
+    const dx = e.changedTouches[0].clientX - startX;
+    if (dx < -50) {
+      container.style.transform = 'translateX(-80px)';
+      row.classList.add('entry-row--swiped');
+    } else {
+      container.style.transform = '';
+      row.classList.remove('entry-row--swiped');
+    }
+  });
+}
+
+// ── Delete ────────────────────────────────────────────────────
+
+async function handleDelete(rowIndex) {
+  try {
+    await deleteLogEntry(rowIndex);
+    const date = store.state.currentDate || today();
+    invalidateLogCache(date);
+    await loadAndRender(date);
+    showToast('Entry deleted', 'success');
+    console.log(`[log] handleDelete → row=${rowIndex}`);
+  } catch (err) {
+    console.error('[log] handleDelete →', err);
+    showToast('Failed to delete entry', 'error');
+  }
+}
+
+// ── Sync ──────────────────────────────────────────────────────
+
+async function handleSync() {
+  const btn  = document.getElementById('log-sync-btn');
+  const date = store.state.currentDate || today();
+  if (btn) { btn.disabled = true; btn.textContent = 'Syncing…'; }
+
+  try {
+    await syncDailySummary(date);
+    showToast('Synced to DailySummary ✓', 'success');
+    console.log(`[log] handleSync → date=${date}`);
+  } catch (err) {
+    console.error('[log] handleSync →', err);
+    showToast('Sync failed', 'error');
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = CONFIG.labels.syncButton; }
+  }
 }
 
 // ── Empty state ───────────────────────────────────────────────
 
 function showEmptyState() {
-  const container = document.getElementById('log-meals');
-  if (container) {
-    container.innerHTML = `
-      <div class="log-empty-state">
-        <span class="log-empty-state__icon">🥗</span>
-        <p class="log-empty-state__text">No entries yet</p>
-        <p class="log-empty-state__sub">Go to Search to add foods</p>
-      </div>
-    `;
-  }
+  const el = document.getElementById('log-meals');
+  if (el) el.innerHTML = `
+    <div class="log-empty-state">
+      <span class="log-empty-state__icon">🥗</span>
+      <p class="log-empty-state__text">No entries yet</p>
+      <p class="log-empty-state__sub">Go to Search to add foods</p>
+    </div>`;
 }
 
 // ── Helpers ───────────────────────────────────────────────────

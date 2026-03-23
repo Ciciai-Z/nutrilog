@@ -1,6 +1,6 @@
 // ============================================================
 // NutriLog — Apps Script Configuration
-// Version: B2  Updated: 2026-03-23
+// Version: B5  Updated: 2026-03-23
 // Column indices are 0-based (JavaScript array index after getValues()).
 // ============================================================
 
@@ -17,67 +17,75 @@ const CONFIG = {
     favourites:   'Favourites',
   },
 
-  search: {
-    maxResults: 50,
-  },
+  search: { maxResults: 50 },
 
-  // 0-based column indices for NutritionDB
-  // Row 2 in Sheets = index 1 in array = header row
-  // Row 3 in Sheets = index 2 = first data row
   columns: {
+
+    // NutritionDB — 0-based, row 2=header, row 3+=data
     nutritionDb: {
-      no:        0,   // A  - NO.
-      name:      1,   // B  - FOOD
-      amount:    2,   // C  - AMOUNT
-      unit:      3,   // D  - UNIT
-      // cals:   4,   // E  - CALS (never use for calculation!)
-      protein:   55,  // BD - PROTEIN (index 55, col 56)
-      carbs:     34,  // AI - CARBS (index 34, col 35)
-      fat:       40,  // AO - FAT (index 40, col 41)
-      fibre:     35,  // AJ - FIBRE (index 35, col 36)
-      sodium:    32,  // AG - SODIUM (index 32, col 33)
-      potassium: 30,  // AE - POTASSIUM (index 30, col 31)
-      category:    61,  // BJ - CATEGORY big category (index 61, col 62)
-      subcategory: 60,  // BI - subcategory small category (index 60, col 61)
+      no:          0,   // A
+      name:        1,   // B
+      amount:      2,   // C
+      unit:        3,   // D
+      protein:     55,  // BD
+      carbs:       34,  // AI
+      fat:         40,  // AO
+      fibre:       35,  // AJ
+      sodium:      32,  // AG
+      potassium:   30,  // AE
+      category:    61,  // BJ - big category
+      subcategory: 60,  // BI - small category
     },
 
-    // CustomFoods columns — confirmed 2026-03-23
+    // CustomFoods — confirmed 2026-03-23
     customFoods: {
-      no:              0,  // A  - NO.
-      name:            1,  // B  - NAME
-      amount:          2,  // C  - AMOUNT
-      unit:            3,  // D  - UNIT
-      calories:        4,  // E  - CALORIES (stored, but we recalc)
-      protein:         5,  // F  - PROTEIN
-      carbs:           6,  // G  - CARBS
-      fat:             7,  // H  - FAT
-      fibre:           8,  // I  - FIBRE
-      sodium:          9,  // J  - SODIUM
-      potassium:       10, // K  - POTASSIUM
-      isQuickAdd:      11, // L  - IS_QUICK_ADD
-      createdDatetime: 12, // M  - CREATED_DATETIME (read-only, written on create)
+      no:              0,   // A
+      name:            1,   // B
+      amount:          2,   // C
+      unit:            3,   // D
+      calories:        4,   // E
+      protein:         5,   // F
+      carbs:           6,   // G
+      fat:             7,   // H
+      fibre:           8,   // I
+      sodium:          9,   // J
+      potassium:       10,  // K
+      isQuickAdd:      11,  // L
+      createdDatetime: 12,  // M
     },
 
-    // Favourites: single column A = food NO.
-    favourites: {
-      no: 0,
-    },
-
-    // DailyLog columns — confirmed from sheet (no MEAL_NO column)
+    // DailyLog — confirmed 2026-03-23 (no MEAL_NO column)
     dailyLog: {
-      date:      0,   // A - DATE (ddd,d/m/yy)
-      mealType:  1,   // B - MEAL_TYPE
-      foodNo:    2,   // C - FOOD_NO
-      name:      3,   // D - NAME
-      amount:    4,   // E - AMOUNT
-      unit:      5,   // F - UNIT
-      calories:  6,   // G - CALORIES
-      protein:   7,   // H - PROTEIN
-      carbs:     8,   // I - CARBS
-      fat:       9,   // J - FAT
-      fibre:     10,  // K - FIBRE
-      sodium:    11,  // L - SODIUM
-      potassium: 12,  // M - POTASSIUM
+      date:            0,   // A - ddd,d/m/yy
+      mealType:        1,   // B
+      foodNo:          2,   // C
+      name:            3,   // D
+      amount:          4,   // E
+      unit:            5,   // F
+      calories:        6,   // G
+      protein:         7,   // H
+      carbs:           8,   // I
+      fat:             9,   // J
+      fibre:           10,  // K
+      sodium:          11,  // L
+      potassium:       12,  // M
+      createdDatetime: 13,  // N
     },
+
+    // DailySummary
+    dailySummary: {
+      date:      0,   // A
+      calories:  1,   // B
+      protein:   2,   // C
+      carbs:     3,   // D
+      fat:       4,   // E
+      fibre:     5,   // F
+      sodium:    6,   // G
+      potassium: 7,   // H
+      syncedAt:  8,   // I
+    },
+
+    // Favourites
+    favourites: { no: 0 },
   },
 };
