@@ -1,61 +1,77 @@
 /* ============================================================
-   tokens.css — CSS 设计变量（颜色、圆角、字体、间距）
-   所有颜色必须引用这里的变量，不得硬编码色值
-   ============================================================ */
-
-@import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600&family=DM+Serif+Display&display=swap');
+   tokens.css
+   Updated: Session 4 — hint colour, meal colours, DM Serif italic
+============================================================ */
+@import url('https://fonts.googleapis.com/css2?family=DM+Sans:ital,wght@0,400;0,500;1,400&family=DM+Serif+Display:ital@0;1&display=swap');
 
 :root {
-  /* ── 颜色 ── */
-  --color-bg-page:      #F2EFE9;   /* 暖米白 背景 */
-  --color-bg-card:      #FFFFFF;   /* 卡片背景 */
-  --color-accent:       #697A58;   /* Olive 绿 主色 */
-  --color-accent-dark:  #4E5C40;   /* Olive 深 */
-  --color-accent-light: #EDF0E8;   /* Olive 淡 */
-  --color-text-primary: #1C1C1A;   /* 主文字 */
-  --color-text-secondary: #6B6B65; /* 次文字 */
-  --color-border:       #E4E0D8;   /* 边框 */
+  /* ── Core colours ── */
+  --color-bg-page:          #F2EFE9;
+  --color-bg-card:          #FFFFFF;
+  --color-accent:           #697A58;
+  --color-accent-dark:      #4E5C40;
+  --color-accent-light:     #EDF0E8;
+  --color-text-primary:     #1C1C1A;
+  --color-text-secondary:   #6B6B65;
+  --color-text-hint:        #A8A8A2;
+  --color-border:           #E4E0D8;
 
-  /* 进度条状态色 */
-  --color-progress-normal:  #697A58;   /* olive 正常 */
-  --color-progress-warning: #B7711A;   /* amber >110% */
-  --color-progress-danger:  #C0392B;   /* red   >120% */
+  /* ── Progress colours ── */
+  --color-progress-normal:  #697A58;
+  --color-progress-warning: #B7711A;
+  --color-progress-danger:  #C0392B;
 
-  /* 功能色 */
+  /* ── Utility ── */
   --color-error:   #C0392B;
   --color-success: #697A58;
 
-  /* ── 圆角 ── */
-  --radius-card:   14px;
-  --radius-btn:    20px;   /* pill 按钮 */
-  --radius-input:  10px;
+  /* ── Meal section colours ── */
+  --meal-breakfast-bg:     #FFF8ED;
+  --meal-breakfast-border: #EDD9A3;
+  --meal-breakfast-icon:   #FDECC8;
+  --meal-lunch-bg:         #EDF4ED;
+  --meal-lunch-border:     #A8CCA8;
+  --meal-lunch-icon:       #C8E6C8;
+  --meal-dinner-bg:        #EEE9F6;
+  --meal-dinner-border:    #C0AEE0;
+  --meal-dinner-icon:      #D8CFF0;
+  --meal-snacks-bg:        #F6ECF0;
+  --meal-snacks-border:    #DDB8C8;
+  --meal-snacks-icon:      #EEC8D8;
+  --meal-other-bg:         #F0F0EE;
+  --meal-other-border:     #C8C8C4;
+  --meal-other-icon:       #E8E8E4;
+
+  /* ── Radii ── */
+  --radius-card:  14px;
+  --radius-btn:   20px;
+  --radius-input: 10px;
   --radius-sm:     6px;
 
-  /* ── 字体 ── */
-  --font-sans:   'DM Sans', -apple-system, sans-serif;
-  --font-serif:  'DM Serif Display', Georgia, serif;
+  /* ── Fonts ── */
+  --font-sans:  'DM Sans', -apple-system, sans-serif;
+  --font-serif: 'DM Serif Display', Georgia, serif;
 
-  /* ── 字号 ── */
+  /* ── Type scale ── */
   --text-xs:   11px;
-  --text-sm:   13px;
-  --text-base: 15px;
-  --text-md:   17px;
-  --text-lg:   20px;
-  --text-xl:   24px;
-  --text-2xl:  30px;
+  --text-sm:   12px;
+  --text-base: 13px;
+  --text-md:   15px;
+  --text-lg:   18px;
+  --text-xl:   21px;
 
-  /* ── 间距 ── */
+  /* ── Spacing ── */
   --space-1:  4px;
   --space-2:  8px;
-  --space-3:  12px;
-  --space-4:  16px;
-  --space-5:  20px;
-  --space-6:  24px;
-  --space-8:  32px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-8: 32px;
 
-  /* ── 阴影 ── */
+  /* ── Shadow ── */
   --shadow-card: 0 1px 4px rgba(0,0,0,0.06), 0 2px 12px rgba(0,0,0,0.04);
 
-  /* ── Tab Bar 高度 ── */
+  /* ── Tab bar ── */
   --tab-bar-height: 56px;
 }

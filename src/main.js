@@ -1,18 +1,16 @@
 // ============================================================
-// main.js — 路由初始化，页面切换入口
-// Updated: B5 (tab dedup, logout button)
+// main.js — 路由初始化
+// Updated: Session 4 (Favourites tab, persistent sidebar, date pill)
 // ============================================================
-
 import { isLoggedIn, renderAuthScreen, logout } from './auth.js';
-import { store }                                 from './store.js';
-import { getSettings }                           from './api.js';
-import { today }                                 from './utils.js';
-import { initSearch }                            from './search.js';
-import { initSettings }                          from './settings.js';
-import { initLog }                               from './log.js';
+import { store } from './store.js';
+import { getSettings } from './api.js';
+import { today, formatDate } from './utils.js';
+import { initLog, renderSidebarSummary } from './log.js';
+import { initSettings } from './settings.js';
+import { initFavourites } from './search.js';
 
-// ── 页面骨架 ──────────────────────────────────────────────────
-
+// ── App shell ─────────────────────────────────────────────────
 function renderAppShell() {
   const app = document.getElementById('app');
   app.innerHTML = `
@@ -25,9 +23,9 @@ function renderAppShell() {
           <span class="tab-bar__icon">📋</span>
           <span class="tab-bar__label">Today</span>
         </button>
-        <button class="tab-bar__item" data-tab="search">
-          <span class="tab-bar__icon">🔍</span>
-          <span class="tab-bar__label">Search</span>
+        <button class="tab-bar__item" data-tab="favourites">
+          <span class="tab-bar__icon">⭐</span>
+          <span class="tab-bar__label">Favourites</span>
         </button>
         <button class="tab-bar__item" data-tab="meals">
           <span class="tab-bar__icon">🍽</span>
@@ -41,6 +39,7 @@ function renderAppShell() {
           <span class="tab-bar__icon">⚙️</span>
           <span class="tab-bar__label">Settings</span>
         </button>
+        <span class="nav-date-pill" id="nav-date-pill"></span>
         <button class="tab-bar__item tab-bar__item--logout" id="logout-btn">
           <span class="tab-bar__icon">🔓</span>
           <span class="tab-bar__label">Logout</span>
@@ -48,16 +47,28 @@ function renderAppShell() {
       </nav>
     </div>`;
 
+  updateDatePill();
   setupTabBar();
   navigateTo('today');
 }
 
-// ── Tab Bar ───────────────────────────────────────────────────
+// ── Date pill ─────────────────────────────────────────────────
+function updateDatePill() {
+  const pill = document.getElementById('nav-date-pill');
+  if (!pill) return;
+  const d = store.state.currentDate || today();
+  pill.textContent = d;
+  pill.onclick = () => {
+    // On mobile fall back to native date navigation (arrows in log.js)
+    // On Mac this pill is informational only; date changes via log nav arrows
+  };
+}
 
+// ── Tab bar ───────────────────────────────────────────────────
 let currentTab = null;
 
 function setupTabBar() {
-  document.getElementById('tab-bar').addEventListener('click', (e) => {
+  document.getElementById('tab-bar').addEventListener('click', e => {
     const btn = e.target.closest('.tab-bar__item');
     if (!btn) return;
     if (btn.id === 'logout-btn') { handleLogout(); return; }
@@ -65,8 +76,8 @@ function setupTabBar() {
   });
 }
 
-async function navigateTo(tab) {
-  if (currentTab === tab) return;  // same tab, skip re-init
+export async function navigateTo(tab) {
+  if (currentTab === tab) return;
   currentTab = tab;
 
   document.querySelectorAll('.tab-bar__item[data-tab]').forEach(btn => {
@@ -74,45 +85,96 @@ async function navigateTo(tab) {
   });
 
   const content = document.getElementById('main-content');
+  const isMac = window.innerWidth >= 768;
 
+  // On Mac: Today / Favourites / Meals share the persistent sidebar layout.
+  // For those tabs we render a two-column shell; navigateTo only swaps the left column.
+  if (isMac && ['today', 'favourites', 'meals'].includes(tab)) {
+    await renderWithSidebar(tab, content);
+    return;
+  }
+
+  // Mobile or non-sidebar tabs: full content swap
   switch (tab) {
     case 'today':
       content.innerHTML = '<div id="view-today" class="page"></div>';
       await initLog();
       break;
-
-    case 'search':
-      content.innerHTML = '<div id="view-search" class="page"></div>';
-      await initSearch();
+    case 'favourites':
+      content.innerHTML = '<div id="view-favourites" class="page"></div>';
+      await initFavourites();
       break;
-
     case 'meals':
       content.innerHTML = placeholderPage('Meals', '🍽', 'Meal templates coming in B8');
       break;
-
     case 'history':
       content.innerHTML = placeholderPage('History', '📅', 'History coming in B9');
       break;
-
     case 'settings':
       content.innerHTML = '<div id="view-settings" class="page"></div>';
       initSettings();
       break;
-
     default:
       content.innerHTML = placeholderPage(tab, '🔧', `${tab} coming soon`);
   }
 }
 
-// ── Logout ────────────────────────────────────────────────────
+// ── Mac two-column: persistent sidebar ───────────────────────
+let macShellRendered = false;
 
+async function renderWithSidebar(tab, content) {
+  // Build shell once
+  if (!macShellRendered) {
+    content.innerHTML = `
+      <div class="mac-shell" style="display:grid;grid-template-columns:1fr 300px;height:100%;overflow:hidden">
+        <div id="mac-left" style="overflow-y:auto;min-height:0"></div>
+        <div id="mac-sidebar" style="border-left:1px solid var(--color-border);background:var(--color-bg-card);overflow-y:auto;padding:20px 16px 16px;min-height:0;display:flex;flex-direction:column">
+          <p class="sidebar-heading">How I'm doing</p>
+          <div id="sidebar-summary" class="sidebar-summary"></div>
+          <button id="sidebar-save-btn" class="sidebar-save-btn">Save Summary</button>
+        </div>
+      </div>`;
+    document.getElementById('sidebar-save-btn')?.addEventListener('click', () => {
+      import('./log.js').then(m => m.handleSyncFromSidebar?.());
+    });
+    macShellRendered = true;
+  }
+
+  // Render sidebar data
+  renderSidebarSummary();
+
+  // Swap left column only
+  const left = document.getElementById('mac-left');
+  if (!left) return;
+
+  switch (tab) {
+    case 'today':
+      left.innerHTML = '<div id="view-today" class="page"></div>';
+      await initLog(true);      // true = mac mode, skip sidebar re-render
+      break;
+    case 'favourites':
+      left.innerHTML = '<div id="view-favourites" class="page"></div>';
+      await initFavourites(true);
+      break;
+    case 'meals':
+      left.innerHTML = placeholderPage('Meals', '🍽', 'Meal templates coming in B8');
+      break;
+  }
+}
+
+// Called by log.js / search.js whenever data changes
+export function refreshSidebar() {
+  renderSidebarSummary();
+}
+
+// ── Logout ────────────────────────────────────────────────────
 function handleLogout() {
   currentTab = null;
+  macShellRendered = false;
   logout();
 }
 
 // ── Placeholder ───────────────────────────────────────────────
-
 function placeholderPage(title, icon, note) {
   return `
     <div class="page">
@@ -126,8 +188,7 @@ function placeholderPage(title, icon, note) {
     </div>`;
 }
 
-// ── 登录后初始化 ──────────────────────────────────────────────
-
+// ── Login init ────────────────────────────────────────────────
 async function onLogin() {
   store.setCurrentDate(today());
   try {
@@ -140,8 +201,5 @@ async function onLogin() {
   renderAppShell();
 }
 
-// ── 启动 ──────────────────────────────────────────────────────
-
 window.addEventListener('nutrilog:login', onLogin);
-if (isLoggedIn()) { onLogin(); }
-else { renderAuthScreen(); }
+if (isLoggedIn()) { onLogin(); } else { renderAuthScreen(); }
