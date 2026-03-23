@@ -1,6 +1,6 @@
 // ============================================================
-// main.js — 路由初始化
-// Fixed: preload foods on login so sidebar & search are instant
+// main.js — Router
+// Fixed: mobile tab guard (no reload on re-visit), sidebar refresh
 // ============================================================
 import { isLoggedIn, renderAuthScreen, logout } from './auth.js';
 import { store } from './store.js';
@@ -70,7 +70,6 @@ function updateDatePill() {
   const pill = document.getElementById('nav-date-pill');
   if (!pill) return;
   pill.textContent = formatPillDate(store.state.currentDate || today());
-  pill.title = 'Use ‹ › on Today to change date';
 }
 
 // ── Tab bar ────────────────────────────────────────────────────
@@ -93,14 +92,23 @@ export async function navigateTo(tab) {
   const isSidebarTab = isMac && ['today','favourites','meals'].includes(tab);
   const wasSidebarTab= isMac && ['today','favourites','meals'].includes(currentTab);
 
+  // Mac sidebar tabs: skip re-init if same tab and shell intact
   if (tab === currentTab && isSidebarTab && document.getElementById('mac-left')) return;
-  if (tab === currentTab && !isSidebarTab) return;
+
+  // Mobile + non-sidebar tabs: skip re-init if same tab AND content already rendered
+  // Exception: always re-render settings (it's stateful)
+  if (tab === currentTab && !isSidebarTab && tab !== 'settings') {
+    // Just update active state and return
+    document.querySelectorAll('.tab-bar__item[data-tab]').forEach(btn =>
+      btn.classList.toggle('tab-bar__item--active', btn.dataset.tab === tab));
+    return;
+  }
+
   if (isSidebarTab && !wasSidebarTab) macShellRendered = false;
 
   currentTab = tab;
-  document.querySelectorAll('.tab-bar__item[data-tab]').forEach(btn => {
-    btn.classList.toggle('tab-bar__item--active', btn.dataset.tab === tab);
-  });
+  document.querySelectorAll('.tab-bar__item[data-tab]').forEach(btn =>
+    btn.classList.toggle('tab-bar__item--active', btn.dataset.tab === tab));
 
   const content = document.getElementById('main-content');
 
@@ -150,9 +158,6 @@ async function renderWithSidebar(tab, content) {
     macShellRendered = true;
   }
 
-  // Render sidebar immediately with cached data (no wait)
-  renderSidebarSummary();
-
   const left = document.getElementById('mac-left');
   if (!left) return;
 
@@ -160,14 +165,16 @@ async function renderWithSidebar(tab, content) {
     case 'today':
       left.innerHTML = '<div id="view-today" class="page"></div>';
       await initLog(true);
-      renderSidebarSummary(); // refresh after log data loaded
+      // sidebar is refreshed inside initLog via renderLog → renderSidebarSummary
       break;
     case 'favourites':
       left.innerHTML = '<div id="view-favourites" class="page"></div>';
+      renderSidebarSummary(); // show current data immediately
       await initFavourites(true);
       break;
     case 'meals':
       left.innerHTML = placeholderPage('Meals', '🍽', 'Meal templates coming in B8');
+      renderSidebarSummary();
       break;
   }
 }
@@ -178,6 +185,11 @@ export function notifyDateChange() { updateDatePill(); }
 function handleLogout() {
   currentTab       = null;
   macShellRendered = false;
+  // Clear cached state so next login starts fresh
+  store.state.foods      = null;
+  store.state.favourites = null;
+  store.state.dailyLog   = {};
+  store.state.settings   = null;
   logout();
 }
 
@@ -194,11 +206,9 @@ function placeholderPage(title, icon, note) {
     </div>`;
 }
 
-// ── Login init — preload foods in background ───────────────────
+// ── Login ──────────────────────────────────────────────────────
 async function onLogin() {
   store.setCurrentDate(today());
-
-  // Load settings first (fast)
   try {
     const settings = await getSettings();
     store.setSettings(settings);
@@ -206,19 +216,12 @@ async function onLogin() {
   } catch (ex) {
     console.error('[main] failed to load settings:', ex.message);
   }
-
-  // Render app immediately — don't wait for foods
   renderAppShell();
-
-  // Preload food database + favourites in background so first search is instant
+  // Preload in background
   Promise.all([
     import('./search.js').then(m => m.ensureFoodsLoaded()),
     import('./search.js').then(m => m.ensureFavouritesLoaded?.()),
-  ]).then(() => {
-    console.log('[main] foods + favourites preloaded ✓');
-  }).catch(err => {
-    console.warn('[main] background preload failed:', err.message);
-  });
+  ]).catch(err => console.warn('[main] preload failed:', err.message));
 }
 
 window.addEventListener('nutrilog:login', onLogin);

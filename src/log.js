@@ -1,6 +1,6 @@
 // ============================================================
 // log.js — Today's Log
-// Fixed: entry layout, inline delete button, faster render
+// Fixed: sidebar real-time, iPhone delete ❌, long-press move, macro colors
 // ============================================================
 import { CONFIG } from '../config.js';
 import { getDailyLog, deleteLogEntry, updateLogEntry, syncDailySummary, addLogEntry } from './api.js';
@@ -8,7 +8,7 @@ import { store } from './store.js';
 import { showToast } from './ui.js';
 import { today, formatDate, parseDate } from './utils.js';
 
-const isMac = () => window.innerWidth >= 768;
+const isMacView = () => window.innerWidth >= 768;
 
 const MEAL_META = {
   Breakfast: { mod: 'breakfast', emoji: '☀️' },
@@ -41,7 +41,7 @@ function renderLogShellMobile(date) {
       <div class="log-page-header-row">
         <div class="page-title-wrap">
           <input class="page-title-input" id="log-title-input" type="text"
-            value="${escapeAttr(title)}" maxlength="28" spellcheck="false" aria-label="Page title">
+            value="${escAttr(title)}" maxlength="28" spellcheck="false" aria-label="Page title">
         </div>
         <span class="log-date-pill" id="log-date-pill">${date}</span>
       </div>
@@ -52,7 +52,7 @@ function renderLogShellMobile(date) {
       </div>
       <div style="padding:0 12px 6px">
         <input class="search-input" id="log-search-input" type="search"
-          placeholder="Search to add food..." autocomplete="off" style="font-size:14px">
+          placeholder="Search to add food..." autocomplete="off" style="font-size:16px">
       </div>
       <div id="log-macro-strip" class="iphone-macro-strip"></div>
       <div id="log-meals" class="log-meals"></div>
@@ -76,7 +76,7 @@ function renderLogShellMac(date) {
       <header class="page-header log-mac-header">
         <div class="page-title-wrap">
           <input class="page-title-input" id="log-title-input" type="text"
-            value="${escapeAttr(title)}" maxlength="28" spellcheck="false" aria-label="Page title">
+            value="${escAttr(title)}" maxlength="28" spellcheck="false" aria-label="Page title">
           <div class="page-title-edit-hint">
             <svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="1.2">
               <path d="M7 1.5l1.5 1.5-5 5L2 8.5l.5-1.5z"/>
@@ -140,7 +140,7 @@ function bindTitleInput(id) {
       const { updateSettings } = await import('./api.js');
       await updateSettings({ day_title: val });
       if (store.state.settings) store.state.settings.day_title = val;
-    } catch (err) { console.error('[log] day_title save failed:', err); }
+    } catch (err) { console.error('[log] day_title save:', err); }
   });
   input.addEventListener('keydown', e => {
     if (e.key === 'Enter') { e.preventDefault(); input.blur(); }
@@ -155,12 +155,12 @@ function bindMobileSearch(id) {
   input.addEventListener('focus', async () => {
     input.blur();
     try { const { openSearchSheet } = await import('./search.js'); openSearchSheet(); }
-    catch (err) { console.error('[log] openSearchSheet error:', err); }
+    catch (err) { console.error('[log] openSearchSheet:', err); }
   });
 }
 
 // ── Mac search pill ────────────────────────────────────────────
-let _macSelectedFood = null;
+let _macSelFood = null;
 
 function bindMacSearch() {
   const input    = document.getElementById('mac-search-input');
@@ -174,106 +174,75 @@ function bindMacSearch() {
   if (!input || !dropdown) return;
 
   const showDD = () => { pill.classList.add('mac-search-pill--expanded'); dropdown.classList.add('mac-search-dropdown--visible'); };
-  const hideDD = () => { pill.classList.remove('mac-search-pill--expanded'); dropdown.classList.remove('mac-search-dropdown--visible'); addBar.style.display='none'; _macSelectedFood=null; };
+  const hideDD = () => { pill.classList.remove('mac-search-pill--expanded'); dropdown.classList.remove('mac-search-dropdown--visible'); addBar.style.display='none'; _macSelFood=null; };
 
-  input.addEventListener('focus', () => {
-    showDD();
-    const favs = getFavFoods();
-    renderDD(favs.slice(0, 6));
-  });
+  input.addEventListener('focus', () => { showDD(); renderDD(getFavFoods().slice(0,6)); });
   input.addEventListener('input', () => {
     const q = input.value.trim().toLowerCase();
-    if (!q) { renderDD(getFavFoods().slice(0,6)); return; }
-    renderDD((store.state.foods||[]).filter(f=>f.name?.toLowerCase().includes(q)).slice(0,6));
+    renderDD(q ? (store.state.foods||[]).filter(f=>f.name?.toLowerCase().includes(q)).slice(0,6) : getFavFoods().slice(0,6));
   });
-  document.addEventListener('click', e => {
-    if (!document.getElementById('mac-search-wrap')?.contains(e.target)) hideDD();
-  });
+  document.addEventListener('click', e => { if (!document.getElementById('mac-search-wrap')?.contains(e.target)) hideDD(); });
 
   function getFavFoods() {
-    const favSet = store.state.favourites;
-    const isFav  = no => favSet instanceof Set ? favSet.has(no) : Array.isArray(favSet) ? favSet.includes(no) : false;
-    return (store.state.foods||[]).filter(f => isFav(f.no));
+    const fs = store.state.favourites;
+    return (store.state.foods||[]).filter(f => fs instanceof Set ? fs.has(f.no) : Array.isArray(fs) && fs.includes(f.no));
   }
-
+  function isFav(no) {
+    const fs = store.state.favourites;
+    return fs instanceof Set ? fs.has(no) : Array.isArray(fs) && fs.includes(no);
+  }
   function renderDD(foods) {
-    const favSet = store.state.favourites;
-    const isFav  = no => favSet instanceof Set ? favSet.has(no) : Array.isArray(favSet) ? favSet.includes(no) : false;
     rows.innerHTML = foods.map(f => `
       <div class="mac-search-dropdown-row" data-no="${f.no}">
-        <svg class="mac-search-drow__star" viewBox="0 0 12 12"
-          fill="${isFav(f.no)?'var(--color-accent)':'none'}" stroke="var(--color-accent)" stroke-width="1">
-          <path d="M6 .5l1.3 2.8 3 .4-2.2 2.1.5 3L6 7.5l-2.6 1.3.5-3L1.7 3.7l3-.4z"/>
-        </svg>
-        <span class="mac-search-drow__name">${escapeHtml(f.name)}</span>
+        <svg class="mac-search-drow__star" viewBox="0 0 12 12" fill="${isFav(f.no)?'var(--color-accent)':'none'}" stroke="var(--color-accent)" stroke-width="1">
+          <path d="M6 .5l1.3 2.8 3 .4-2.2 2.1.5 3L6 7.5l-2.6 1.3.5-3L1.7 3.7l3-.4z"/></svg>
+        <span class="mac-search-drow__name">${escHtml(f.name)}</span>
         <span class="mac-search-drow__meta">${calcCals(f,100)} cal/100g</span>
       </div>`).join('');
-    rows.querySelectorAll('.mac-search-dropdown-row').forEach(r =>
-      r.addEventListener('click', () => selectFood(Number(r.dataset.no))));
+    rows.querySelectorAll('.mac-search-dropdown-row').forEach(r => r.addEventListener('click', () => selectFood(Number(r.dataset.no))));
   }
-
   function selectFood(no) {
-    const food = (store.state.foods||[]).find(f=>f.no===no);
-    if (!food) return;
-    _macSelectedFood = food;
-    rows.querySelectorAll('.mac-search-dropdown-row').forEach(r =>
-      r.classList.toggle('mac-search-dropdown-row--selected', Number(r.dataset.no)===no));
+    const food = (store.state.foods||[]).find(f=>f.no===no); if (!food) return;
+    _macSelFood = food;
+    rows.querySelectorAll('.mac-search-dropdown-row').forEach(r => r.classList.toggle('mac-search-dropdown-row--selected', Number(r.dataset.no)===no));
     amountIn.value = store.state.lastAmounts?.[no] || 100;
     document.getElementById('mac-add-bar-name').textContent = (food.name||'').substring(0,22);
-    updateCal();
-    addBar.style.display = 'flex';
+    updateCal(); addBar.style.display = 'flex';
   }
-
-  function updateCal() {
-    if (!_macSelectedFood) return;
-    calSpan.textContent = calcCals(_macSelectedFood, parseFloat(amountIn.value)||0) + ' cal';
-  }
+  function updateCal() { if (_macSelFood) calSpan.textContent = calcCals(_macSelFood, parseFloat(amountIn.value)||0) + ' cal'; }
   amountIn.addEventListener('input', updateCal);
-
   addBtn.addEventListener('click', async () => {
-    if (!_macSelectedFood) return;
-    const food = _macSelectedFood, amount = parseFloat(amountIn.value);
-    const meal = document.getElementById('mac-add-meal')?.value || 'Breakfast';
+    if (!_macSelFood) return;
+    const food = _macSelFood, amount = parseFloat(amountIn.value), meal = document.getElementById('mac-add-meal')?.value || 'Breakfast';
     if (!amount||amount<=0) { showToast('Enter a valid amount','error'); return; }
     addBtn.disabled=true; addBtn.textContent='…';
     try {
-      const date = store.state.currentDate || today();
-      const ratio = amount / (food.amount||100);
+      const date = store.state.currentDate||today(), ratio = amount/(food.amount||100);
       await addLogEntry({ date, mealType:meal, foodNo:food.no, name:food.name, amount, unit:food.unit||'g',
-        calories: Math.round(calcCals(food, food.amount||100) * ratio),
-        protein:  r1((food.protein||0)*ratio), carbs:r1((food.carbs||0)*ratio),
-        fat:      r1((food.fat||0)*ratio),     fibre:r1((food.fibre||0)*ratio),
-        sodium:   r1((food.sodium||0)*ratio),  potassium:r1((food.potassium||0)*ratio) });
+        calories:Math.round(calcCals(food,food.amount||100)*ratio), protein:r1((food.protein||0)*ratio),
+        carbs:r1((food.carbs||0)*ratio), fat:r1((food.fat||0)*ratio), fibre:r1((food.fibre||0)*ratio),
+        sodium:r1((food.sodium||0)*ratio), potassium:r1((food.potassium||0)*ratio) });
       if (!store.state.lastAmounts) store.state.lastAmounts={};
       store.state.lastAmounts[food.no] = amount;
       invalidateLogCache(date);
       store.state.dailyLog[date] = await getDailyLog(date);
       renderLog(date, store.state.dailyLog[date]);
-      const m = await import('./main.js'); m.refreshSidebar?.();
-      showToast(`${food.name} added ✓`,'success');
-      hideDD(); input.value='';
+      showToast(`${food.name} added ✓`,'success'); hideDD(); input.value='';
     } catch(err) { console.error('[log] mac add:',err); showToast('Failed to add','error'); }
     finally { addBtn.disabled=false; addBtn.textContent='+ Add'; }
   });
 }
 
-function calcCals(food, amount) {
-  const r = amount/(food.amount||100);
-  return Math.round((food.fat||0)*r*9 + (food.carbs||0)*r*4 + (food.protein||0)*r*4);
-}
+function calcCals(food, amount) { const r=amount/(food.amount||100); return Math.round((food.fat||0)*r*9+(food.carbs||0)*r*4+(food.protein||0)*r*4); }
 const r1 = v => Math.round(v*10)/10;
 
 // ── Date navigation ────────────────────────────────────────────
 async function navigateDate(delta) {
-  const current = store.state.currentDate || today();
-  const d = parseDate(current);
-  d.setDate(d.getDate() + delta);
+  const d = parseDate(store.state.currentDate||today());
+  d.setDate(d.getDate()+delta);
   const newDate = formatDate(d);
   store.setCurrentDate(newDate);
-  ['log-date-label','log-date-pill'].forEach(id => {
-    const el = document.getElementById(id);
-    if (el) el.textContent = newDate;
-  });
+  ['log-date-label','log-date-pill'].forEach(id => { const el=document.getElementById(id); if(el) el.textContent=newDate; });
   const nextBtn = document.getElementById('log-next');
   if (nextBtn) nextBtn.disabled = newDate === formatDate(new Date());
   try { const m = await import('./main.js'); m.notifyDateChange?.(); } catch {}
@@ -297,29 +266,35 @@ async function loadAndRender(date) {
 function renderLog(date, entries) {
   renderMacroStrip(entries);
   renderMealSections(entries);
-  // Always refresh sidebar with latest data
-  renderSidebarSummary(entries);
+  renderSidebarSummary(entries); // always update sidebar
 }
 
-// ── iPhone macro strip ─────────────────────────────────────────
+// ── iPhone macro strip — with color coding ─────────────────────
 function renderMacroStrip(entries) {
   const el = document.getElementById('log-macro-strip');
   if (!el) return;
-  const t = sumNutrients(entries);
+  const t = sum(entries);
   const s = store.state.settings || {};
   const chips = [
-    { emoji:'🔥', val:Math.round(t.calories),    target:Number(s.calorie_target)||0 },
-    { emoji:'💪', val:t.protein.toFixed(1)+'g',  target:Number(s.protein_target)||0 },
-    { emoji:'🌾', val:t.carbs.toFixed(1)+'g',    target:Number(s.carbs_target)||0 },
-    { emoji:'🥑', val:t.fat.toFixed(1)+'g',      target:Number(s.fat_target)||0 },
+    { emoji:'🔥', val:Math.round(t.calories), target:Number(s.calorie_target)||0, unit:'' },
+    { emoji:'💪', val:t.protein,  target:Number(s.protein_target)||0, unit:'g' },
+    { emoji:'🌾', val:t.carbs,    target:Number(s.carbs_target)||0, unit:'g' },
+    { emoji:'🥑', val:t.fat,      target:Number(s.fat_target)||0, unit:'g' },
   ];
   el.innerHTML = chips.map(c => {
-    const num = parseFloat(c.val);
-    const pct = c.target>0 ? Math.min(num/c.target*100,100) : 0;
-    return `<div class="iphone-macro-chip">
+    const disp   = c.unit ? c.val.toFixed(1) : c.val;
+    const pct    = c.target > 0 ? Math.min(c.val / c.target * 100, 100) : 0;
+    const ratio  = c.target > 0 ? c.val / c.target : 0;
+    const over   = ratio > CONFIG.targets.dangerThreshold;
+    const warn   = ratio > CONFIG.targets.warningThreshold;
+    const fillCls= over ? 'iphone-macro-chip__fill--danger' : warn ? 'iphone-macro-chip__fill--warn' : '';
+    const chipCls= over ? 'iphone-macro-chip--danger' : warn ? 'iphone-macro-chip--warn' : '';
+    return `<div class="iphone-macro-chip ${chipCls}">
       <span class="iphone-macro-chip__emoji">${c.emoji}</span>
-      <span class="iphone-macro-chip__val">${c.val}</span>
-      <div class="iphone-macro-chip__bar"><div class="iphone-macro-chip__fill" style="width:${pct}%"></div></div>
+      <span class="iphone-macro-chip__val">${disp}${c.unit}</span>
+      <div class="iphone-macro-chip__bar">
+        <div class="iphone-macro-chip__fill ${fillCls}" style="width:${pct}%"></div>
+      </div>
     </div>`;
   }).join('');
 }
@@ -329,8 +304,8 @@ export function renderSidebarSummary(entries) {
   const el = document.getElementById('sidebar-summary');
   if (!el) return;
   const date = store.state.currentDate || today();
-  const data = entries || store.state.dailyLog?.[date] || [];
-  const t = sumNutrients(data);
+  const data = entries !== undefined ? entries : (store.state.dailyLog?.[date] || []);
+  const t = sum(data);
   const s = store.state.settings || {};
 
   const macros = [
@@ -346,10 +321,10 @@ export function renderSidebarSummary(entries) {
   ];
 
   const bar = (value, target) => {
-    const pct   = target>0 ? Math.min(value/target*100,100) : 0;
-    const ratio = target>0 ? value/target : 0;
-    const cls   = ratio > CONFIG.targets.dangerThreshold  ? 'sidebar-bar__fill--danger' :
-                  ratio > CONFIG.targets.warningThreshold ? 'sidebar-bar__fill--warning' : '';
+    const pct  = target>0 ? Math.min(value/target*100,100) : 0;
+    const ratio= target>0 ? value/target : 0;
+    const cls  = ratio>CONFIG.targets.dangerThreshold ? 'sidebar-bar__fill--danger' :
+                 ratio>CONFIG.targets.warningThreshold? 'sidebar-bar__fill--warning' : '';
     return `<div class="sidebar-bar"><div class="sidebar-bar__fill ${cls}" style="width:${pct}%"></div></div>`;
   };
 
@@ -392,38 +367,27 @@ export function handleSyncFromSidebar() { handleSync(); }
 function renderMealSections(entries) {
   const container = document.getElementById('log-meals');
   if (!container) return;
-  if (!entries || entries.length === 0) { showEmptyState(); return; }
-  const groups = {};
-  CONFIG.labels.mealTypes.forEach(t => { groups[t] = []; });
-  entries.forEach(e => {
-    const key = CONFIG.labels.mealTypes.includes(e.mealType) ? e.mealType : 'Other';
-    groups[key].push(e);
-  });
-  const html = CONFIG.labels.mealTypes
-    .filter(t => groups[t].length > 0)
-    .map(t => renderMealSection(t, groups[t])).join('');
+  if (!entries||entries.length===0) { showEmptyState(); return; }
+  const groups = {}; CONFIG.labels.mealTypes.forEach(t=>{groups[t]=[];});
+  entries.forEach(e => { const key=CONFIG.labels.mealTypes.includes(e.mealType)?e.mealType:'Other'; groups[key].push(e); });
+  const html = CONFIG.labels.mealTypes.filter(t=>groups[t].length>0).map(t=>renderMealSection(t,groups[t])).join('');
   container.innerHTML = html || '<p class="log-empty">No entries for this day.</p>';
   bindEntryEvents(container);
 }
 
 function renderMealSection(mealType, entries) {
-  const meta = MEAL_META[mealType] || MEAL_META['Other'];
-  const sectionCals = entries.reduce((s,e) => s + (Number(e.calories)||0), 0);
-  const tot = entries.reduce((a,e) => ({
-    protein: a.protein + (Number(e.protein)||0),
-    carbs:   a.carbs   + (Number(e.carbs)||0),
-    fat:     a.fat     + (Number(e.fat)||0),
-    fibre:   a.fibre   + (Number(e.fibre)||0),
-  }), {protein:0, carbs:0, fat:0, fibre:0});
+  const meta = MEAL_META[mealType]||MEAL_META['Other'];
+  const secCals = entries.reduce((s,e)=>s+(Number(e.calories)||0),0);
+  const tot = entries.reduce((a,e)=>({ protein:a.protein+(Number(e.protein)||0), carbs:a.carbs+(Number(e.carbs)||0), fat:a.fat+(Number(e.fat)||0), fibre:a.fibre+(Number(e.fibre)||0) }),{protein:0,carbs:0,fat:0,fibre:0});
   return `
-    <div class="meal-section meal-section--${meta.mod}">
+    <div class="meal-section meal-section--${meta.mod}" data-meal-type="${mealType}">
       <div class="meal-section__header">
         <div class="meal-section__header-left">
           <div class="meal-icon-circle">${meta.emoji}</div>
           <span class="meal-section__name">${mealType}</span>
         </div>
         <div class="meal-section__macros">
-          <span class="meal-section__macro-item"><strong>${Math.round(sectionCals)}</strong> cal</span>
+          <span class="meal-section__macro-item"><strong>${Math.round(secCals)}</strong> cal</span>
           <span class="meal-section__macro-item">P <strong>${tot.protein.toFixed(1)}g</strong></span>
           <span class="meal-section__macro-item">C <strong>${tot.carbs.toFixed(1)}g</strong></span>
           <span class="meal-section__macro-item">F <strong>${tot.fat.toFixed(1)}g</strong></span>
@@ -434,27 +398,20 @@ function renderMealSection(mealType, entries) {
     </div>`;
 }
 
-// ── Entry row — new design matching reference screenshots ──────
-// Layout:
-//   [food name]   [100g badge]   [391 kcal]   [× delete]
-//   P 13.1  C 56.1  F 12.7  Na 380mg  K 0mg
+// ── Entry row ──────────────────────────────────────────────────
 function renderEntryRow(entry) {
   const cals = Math.round(Number(entry.calories)||0);
   const na   = Math.round(Number(entry.sodium)||0);
   const k    = Math.round(Number(entry.potassium)||0);
-  const p    = Number(entry.protein)||0;
-  const c    = Number(entry.carbs)||0;
-  const f    = Number(entry.fat)||0;
+  const p    = Number(entry.protein)||0, c=Number(entry.carbs)||0, f=Number(entry.fat)||0;
   return `
-    <div class="entry-row" data-row-index="${entry.rowIndex}">
+    <div class="entry-row" data-row-index="${entry.rowIndex}" draggable="true">
       <div class="entry-row__main">
+        <div class="entry-row__drag-handle" title="Long press to move">⠿</div>
         <div class="entry-row__left">
-          <span class="entry-row__name">${escapeHtml(entry.name)}</span>
+          <span class="entry-row__name">${escHtml(entry.name)}</span>
           <div class="entry-row__sub">
-            <button class="entry-row__amount-btn"
-              data-row-index="${entry.rowIndex}"
-              data-amount="${entry.amount}"
-              data-unit="${entry.unit}">${entry.amount}${entry.unit}</button>
+            <button class="entry-row__amount-btn" data-row-index="${entry.rowIndex}" data-amount="${entry.amount}" data-unit="${entry.unit}">${entry.amount}${entry.unit}</button>
             <span class="entry-row__cals">${cals} kcal</span>
           </div>
           <div class="entry-row__macros">
@@ -462,97 +419,208 @@ function renderEntryRow(entry) {
             <span class="entry-row__minerals">Na ${na}mg &nbsp; K ${k}mg</span>
           </div>
         </div>
-        <button class="entry-row__delete-btn"
-          data-row-index="${entry.rowIndex}"
-          aria-label="Delete entry"
-          title="Delete">×</button>
+        <button class="entry-row__delete-btn" data-row-index="${entry.rowIndex}" aria-label="Delete">❌</button>
       </div>
     </div>`;
 }
 
+// ── Events ─────────────────────────────────────────────────────
 function bindEntryEvents(container) {
-  container.querySelectorAll('.entry-row__amount-btn').forEach(btn =>
-    btn.addEventListener('click', () => handleAmountEdit(btn)));
-  container.querySelectorAll('.entry-row__delete-btn').forEach(btn =>
-    btn.addEventListener('click', () => handleDelete(Number(btn.dataset.rowIndex))));
+  container.querySelectorAll('.entry-row__amount-btn').forEach(btn => btn.addEventListener('click', () => handleAmountEdit(btn)));
+  container.querySelectorAll('.entry-row__delete-btn').forEach(btn => btn.addEventListener('click', e => { e.stopPropagation(); handleDelete(Number(btn.dataset.rowIndex)); }));
+  bindDragMove(container);
+  bindLongPressMove(container);
 }
 
+// ── Amount edit ────────────────────────────────────────────────
 function handleAmountEdit(btn) {
   if (btn.querySelector('input')) return;
-  const rowIndex = Number(btn.dataset.rowIndex);
-  const oldAmt   = Number(btn.dataset.amount);
-  const unit     = btn.dataset.unit;
-  btn.innerHTML = `<input class="entry-amount-input" type="number" value="${oldAmt}"
-    min="1" step="1" inputmode="decimal" style="width:56px;text-align:right;">`;
-  const input = btn.querySelector('input');
-  input.focus(); input.select();
-  const confirm = async () => {
-    const newAmt = parseFloat(input.value);
-    if (!newAmt || newAmt <= 0 || newAmt === oldAmt) { btn.textContent = `${oldAmt}${unit}`; return; }
-    btn.textContent = `${newAmt}${unit}`;
-    btn.dataset.amount = newAmt;
-    await handleUpdate(rowIndex, newAmt);
+  const rowIndex=Number(btn.dataset.rowIndex), oldAmt=Number(btn.dataset.amount), unit=btn.dataset.unit;
+  btn.innerHTML=`<input class="entry-amount-input" type="number" value="${oldAmt}" min="1" step="1" inputmode="decimal" style="width:56px;text-align:right;">`;
+  const input=btn.querySelector('input'); input.focus(); input.select();
+  const confirm=async()=>{
+    const newAmt=parseFloat(input.value);
+    if (!newAmt||newAmt<=0||newAmt===oldAmt){btn.textContent=`${oldAmt}${unit}`;return;}
+    btn.textContent=`${newAmt}${unit}`; btn.dataset.amount=newAmt; await handleUpdate(rowIndex,newAmt);
   };
-  input.addEventListener('blur', confirm);
-  input.addEventListener('keydown', e => {
-    if (e.key === 'Enter') { e.preventDefault(); input.blur(); }
-    if (e.key === 'Escape') { btn.textContent = `${oldAmt}${unit}`; }
-  });
+  input.addEventListener('blur',confirm);
+  input.addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();input.blur();}if(e.key==='Escape'){btn.textContent=`${oldAmt}${unit}`;}});
 }
 
 async function handleUpdate(rowIndex, newAmount) {
   try {
     await updateLogEntry(rowIndex, newAmount);
-    const date = store.state.currentDate || today();
+    const date=store.state.currentDate||today();
     invalidateLogCache(date);
-    store.state.dailyLog[date] = await getDailyLog(date);
+    store.state.dailyLog[date]=await getDailyLog(date);
     renderMacroStrip(store.state.dailyLog[date]);
     renderSidebarSummary(store.state.dailyLog[date]);
-  } catch(err) { console.error('[log] handleUpdate →', err); showToast('Failed to update amount','error'); }
+    renderMealSections(store.state.dailyLog[date]);
+  } catch(err){console.error('[log] handleUpdate:',err);showToast('Failed to update amount','error');}
 }
 
+// ── Delete — real-time sidebar update ─────────────────────────
 async function handleDelete(rowIndex) {
   try {
     await deleteLogEntry(rowIndex);
+    const date=store.state.currentDate||today();
+    // Update store immediately
+    if (store.state.dailyLog[date]) {
+      store.state.dailyLog[date] = store.state.dailyLog[date].filter(e=>e.rowIndex!==rowIndex);
+    }
+    invalidateLogCache(date);
+    // Remove from DOM
     const rowEl = document.querySelector(`.entry-row[data-row-index="${rowIndex}"]`);
     if (rowEl) {
       const section = rowEl.closest('.meal-section');
-      rowEl.style.transition = 'opacity 0.18s, max-height 0.2s';
-      rowEl.style.opacity = '0';
-      rowEl.style.maxHeight = rowEl.offsetHeight + 'px';
-      setTimeout(() => { rowEl.style.maxHeight = '0'; rowEl.style.overflow = 'hidden'; }, 10);
-      setTimeout(() => {
+      rowEl.style.transition='opacity 0.18s,max-height 0.2s';
+      rowEl.style.opacity='0'; rowEl.style.maxHeight=rowEl.offsetHeight+'px';
+      setTimeout(()=>{rowEl.style.maxHeight='0';rowEl.style.overflow='hidden';},10);
+      setTimeout(()=>{
         rowEl.remove();
-        if (section && !section.querySelector('.entry-row')) {
-          section.style.transition = 'opacity 0.15s';
-          section.style.opacity = '0';
-          setTimeout(() => section.remove(), 160);
+        if (section&&!section.querySelector('.entry-row')) {
+          section.style.transition='opacity 0.15s'; section.style.opacity='0';
+          setTimeout(()=>section.remove(),160);
         }
-      }, 220);
+      },220);
     }
-    const date = store.state.currentDate || today();
-    if (store.state.dailyLog[date]) {
-      store.state.dailyLog[date] = store.state.dailyLog[date].filter(e => e.rowIndex !== rowIndex);
-      renderMacroStrip(store.state.dailyLog[date]);
-      renderSidebarSummary(store.state.dailyLog[date]);
-    }
-    invalidateLogCache(date);
+    // Refresh summaries IMMEDIATELY with updated store data
+    const updatedEntries = store.state.dailyLog[date] || [];
+    renderMacroStrip(updatedEntries);
+    renderSidebarSummary(updatedEntries);
     showToast('Entry deleted','success');
-  } catch(err) { console.error('[log] handleDelete →', err); showToast('Failed to delete entry','error'); }
+    console.log(`[log] handleDelete → row=${rowIndex}`);
+  } catch(err){console.error('[log] handleDelete:',err);showToast('Failed to delete entry','error');}
 }
 
+// ── Drag & drop move (Mac) ─────────────────────────────────────
+function bindDragMove(container) {
+  let dragRowIndex = null;
+  container.addEventListener('dragstart', e => {
+    const row = e.target.closest('.entry-row');
+    if (!row) return;
+    dragRowIndex = Number(row.dataset.rowIndex);
+    e.dataTransfer.effectAllowed = 'move';
+    row.style.opacity = '0.4';
+  });
+  container.addEventListener('dragend', e => {
+    const row = e.target.closest('.entry-row');
+    if (row) row.style.opacity = '';
+    dragRowIndex = null;
+  });
+  container.querySelectorAll('.meal-section').forEach(section => {
+    section.addEventListener('dragover', e => { e.preventDefault(); section.classList.add('meal-section--drag-over'); });
+    section.addEventListener('dragleave', () => section.classList.remove('meal-section--drag-over'));
+    section.addEventListener('drop', async e => {
+      e.preventDefault();
+      section.classList.remove('meal-section--drag-over');
+      if (!dragRowIndex) return;
+      const targetMeal = section.dataset.mealType;
+      if (!targetMeal) return;
+      await moveEntry(dragRowIndex, targetMeal);
+    });
+  });
+}
+
+// ── Long-press move (iPhone) ───────────────────────────────────
+function bindLongPressMove(container) {
+  let longPressTimer = null;
+  let touchRowIndex  = null;
+  container.addEventListener('touchstart', e => {
+    const row = e.target.closest('.entry-row');
+    if (!row) return;
+    touchRowIndex = Number(row.dataset.rowIndex);
+    longPressTimer = setTimeout(() => showMoveMenu(touchRowIndex, row), 600);
+  }, { passive: true });
+  container.addEventListener('touchend',   () => clearTimeout(longPressTimer));
+  container.addEventListener('touchmove',  () => clearTimeout(longPressTimer), { passive: true });
+  container.addEventListener('touchcancel',() => clearTimeout(longPressTimer));
+}
+
+function showMoveMenu(rowIndex, rowEl) {
+  document.getElementById('move-menu')?.remove();
+  const entry = (store.state.dailyLog[store.state.currentDate||today()]||[]).find(e=>e.rowIndex===rowIndex);
+  if (!entry) return;
+  const currentMeal = entry.mealType;
+  const menu = document.createElement('div');
+  menu.id = 'move-menu';
+  menu.className = 'move-menu';
+  menu.innerHTML = `
+    <div class="move-menu__title">Move to…</div>
+    ${CONFIG.labels.mealTypes.filter(t=>t!==currentMeal).map(t=>`
+      <button class="move-menu__item" data-meal="${t}">${MEAL_META[t]?.emoji||''} ${t}</button>`).join('')}
+    <button class="move-menu__cancel">Cancel</button>`;
+  document.body.appendChild(menu);
+  requestAnimationFrame(() => menu.classList.add('move-menu--visible'));
+  menu.querySelectorAll('.move-menu__item').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      menu.remove();
+      await moveEntry(rowIndex, btn.dataset.meal);
+    });
+  });
+  menu.querySelector('.move-menu__cancel').addEventListener('click', () => menu.remove());
+  // Close on backdrop tap
+  setTimeout(() => document.addEventListener('touchstart', function close(e) {
+    if (!menu.contains(e.target)) { menu.remove(); document.removeEventListener('touchstart', close); }
+  }, { once: false }), 100);
+}
+
+// Right-click move menu on Mac
+document.addEventListener('contextmenu', e => {
+  const row = e.target.closest('.entry-row');
+  if (!row) return;
+  const entry = (store.state.dailyLog[store.state.currentDate||today()]||[]).find(ev=>ev.rowIndex===Number(row.dataset.rowIndex));
+  if (!entry) return;
+  e.preventDefault();
+  showContextMoveMenu(e.clientX, e.clientY, Number(row.dataset.rowIndex), entry.mealType);
+});
+
+function showContextMoveMenu(x, y, rowIndex, currentMeal) {
+  document.getElementById('ctx-move-menu')?.remove();
+  const menu = document.createElement('div');
+  menu.id = 'ctx-move-menu';
+  menu.className = 'ctx-move-menu';
+  menu.style.cssText = `position:fixed;left:${x}px;top:${y}px;z-index:9999`;
+  menu.innerHTML = `
+    <div class="ctx-move-menu__title">Move to meal…</div>
+    ${CONFIG.labels.mealTypes.filter(t=>t!==currentMeal).map(t=>`
+      <button class="ctx-move-menu__item" data-meal="${t}">${MEAL_META[t]?.emoji||''} ${t}</button>`).join('')}`;
+  document.body.appendChild(menu);
+  menu.querySelectorAll('.ctx-move-menu__item').forEach(btn => {
+    btn.addEventListener('click', async () => { menu.remove(); await moveEntry(rowIndex, btn.dataset.meal); });
+  });
+  setTimeout(() => document.addEventListener('click', () => menu.remove(), { once: true }), 50);
+}
+
+async function moveEntry(rowIndex, targetMeal) {
+  try {
+    const date = store.state.currentDate || today();
+    const entries = store.state.dailyLog[date] || [];
+    const entry = entries.find(e => e.rowIndex === rowIndex);
+    if (!entry) return;
+    // Delete and re-add with new meal type
+    await deleteLogEntry(rowIndex);
+    await addLogEntry({ ...entry, mealType: targetMeal, rowIndex: undefined });
+    invalidateLogCache(date);
+    store.state.dailyLog[date] = await getDailyLog(date);
+    renderLog(date, store.state.dailyLog[date]);
+    showToast(`Moved to ${targetMeal} ✓`, 'success');
+  } catch(err) { console.error('[log] moveEntry:', err); showToast('Failed to move entry', 'error'); }
+}
+
+// ── Sync ──────────────────────────────────────────────────────
 async function handleSync() {
-  const date = store.state.currentDate || today();
-  const btns = ['log-sync-btn-mobile','sidebar-save-btn'].map(id => document.getElementById(id)).filter(Boolean);
-  btns.forEach(b => { b.disabled=true; b.textContent='Saving…'; });
+  const date = store.state.currentDate||today();
+  const btns = ['log-sync-btn-mobile','sidebar-save-btn'].map(id=>document.getElementById(id)).filter(Boolean);
+  btns.forEach(b=>{b.disabled=true;b.textContent='Saving…';});
   try { await syncDailySummary(date); showToast('Saved to DailySummary ✓','success'); }
-  catch(err) { console.error('[log] handleSync →', err); showToast('Save failed','error'); }
-  finally { btns.forEach(b => { b.disabled=false; b.textContent='Save Summary'; }); }
+  catch(err) { console.error('[log] handleSync:',err); showToast('Save failed','error'); }
+  finally { btns.forEach(b=>{b.disabled=false;b.textContent='Save Summary';}); }
 }
 
 function showEmptyState() {
-  const el = document.getElementById('log-meals');
-  if (el) el.innerHTML = `
+  const el=document.getElementById('log-meals');
+  if(el) el.innerHTML=`
     <div class="log-empty-state">
       <span class="log-empty-state__icon">🥗</span>
       <p class="log-empty-state__text">No entries yet</p>
@@ -560,19 +628,13 @@ function showEmptyState() {
     </div>`;
 }
 
-function sumNutrients(entries) {
-  return (entries||[]).reduce((acc,e) => ({
-    calories:  acc.calories  + (Number(e.calories)||0),
-    protein:   acc.protein   + (Number(e.protein)||0),
-    carbs:     acc.carbs     + (Number(e.carbs)||0),
-    fat:       acc.fat       + (Number(e.fat)||0),
-    fibre:     acc.fibre     + (Number(e.fibre)||0),
-    sodium:    acc.sodium    + (Number(e.sodium)||0),
-    potassium: acc.potassium + (Number(e.potassium)||0),
-  }), {calories:0, protein:0, carbs:0, fat:0, fibre:0, sodium:0, potassium:0});
+function sum(entries) {
+  return (entries||[]).reduce((acc,e)=>({
+    calories: acc.calories+(Number(e.calories)||0), protein:acc.protein+(Number(e.protein)||0),
+    carbs:    acc.carbs+(Number(e.carbs)||0),       fat:acc.fat+(Number(e.fat)||0),
+    fibre:    acc.fibre+(Number(e.fibre)||0),        sodium:acc.sodium+(Number(e.sodium)||0),
+    potassium:acc.potassium+(Number(e.potassium)||0),
+  }),{calories:0,protein:0,carbs:0,fat:0,fibre:0,sodium:0,potassium:0});
 }
-
-function escapeHtml(str) {
-  return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
-}
-function escapeAttr(str) { return String(str||'').replace(/"/g,'&quot;').replace(/'/g,'&#39;'); }
+function escHtml(s){return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
+function escAttr(s){return String(s||'').replace(/"/g,'&quot;').replace(/'/g,'&#39;');}
