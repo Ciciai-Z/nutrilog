@@ -1,8 +1,7 @@
 // ============================================================
 // log.js
-// Fixed: instant meal header update, Fibre chip, Remaining negative,
-//        date in header, delete button visible, processing states,
-//        favourites pre-load before render
+// Fixed: amount edit → processing until meal header updates,
+//        Mac date nav arrows in header, font sizes
 // ============================================================
 import { CONFIG } from '../config.js';
 import { getDailyLog, deleteLogEntry, updateLogEntry, syncDailySummary, addLogEntry, toggleFavourite } from './api.js';
@@ -23,7 +22,6 @@ export async function initLog(macMode = false) {
   const date = store.state.currentDate || today();
   if (macMode) renderLogShellMac(date);
   else         renderLogShellMobile(date);
-  // Ensure favourites loaded BEFORE rendering entries (so star state is correct)
   try { const { ensureFavouritesLoaded } = await import('./search.js'); await ensureFavouritesLoaded(); } catch {}
   await loadAndRender(date);
   console.log('[log] initLog → ready');
@@ -31,29 +29,25 @@ export async function initLog(macMode = false) {
 
 export function invalidateLogCache(date) { delete store.state.dailyLog[date]; }
 
-// ── Mobile shell — date between title and search ───────────────
+// ── Mobile shell ───────────────────────────────────────────────
 function renderLogShellMobile(date) {
   const view = document.getElementById('view-today'); if (!view) return;
   const title = store.state.settings?.day_title || CONFIG.labels.defaultDayTitle || "Today's log";
   view.innerHTML = `
     <div class="log-page">
-      <!-- Row 1: Editable title -->
       <div class="log-page-header-row">
         <div class="page-title-wrap">
           <input class="page-title-input" id="log-title-input" type="text"
             value="${escAttr(title)}" maxlength="28" spellcheck="false">
         </div>
       </div>
-      <!-- Row 2: Date (centred, between title and search) -->
       <div class="log-mobile-date-row" id="log-mobile-date">
         <span class="log-mobile-date-label">${formatMobileDate(date)}</span>
       </div>
-      <!-- Row 3: Search bar -->
       <div style="padding:0 12px 6px">
         <input class="search-input" id="log-search-input" type="search"
           placeholder="Search to add food..." autocomplete="off" style="font-size:16px">
       </div>
-      <!-- Macro strip: 5 chips including Fibre -->
       <div id="log-macro-strip" class="iphone-macro-strip"></div>
       <div id="log-meals" class="log-meals"></div>
       <div class="log-sync-wrap">
@@ -77,13 +71,15 @@ function formatMobileDate(dateStr) {
   } catch { return dateStr; }
 }
 
-// ── Mac shell ──────────────────────────────────────────────────
+// ── Mac shell — date nav arrows between title and search ───────
 function renderLogShellMac(date) {
   const view = document.getElementById('view-today'); if (!view) return;
-  const title = store.state.settings?.day_title || CONFIG.labels.defaultDayTitle || "Today's log";
+  const title   = store.state.settings?.day_title || CONFIG.labels.defaultDayTitle || "Today's log";
+  const isToday = date === formatDate(new Date());
   view.innerHTML = `
     <div class="log-page">
       <header class="page-header log-mac-header">
+        <!-- Row 1: title (left) -->
         <div class="page-title-wrap">
           <input class="page-title-input" id="log-title-input" type="text"
             value="${escAttr(title)}" maxlength="28" spellcheck="false">
@@ -92,7 +88,13 @@ function renderLogShellMac(date) {
               <path d="M7 1.5l1.5 1.5-5 5L2 8.5l.5-1.5z"/></svg> click to edit
           </div>
         </div>
-        <span class="page-header__spacer"></span>
+        <!-- Row 1: date nav (centre) -->
+        <div class="log-mac-date-nav" id="log-mac-date-nav">
+          <button class="log-mac-nav-btn" id="log-mac-prev" aria-label="Previous day">‹</button>
+          <span class="log-mac-date-label" id="log-mac-date-label">${formatMacDate(date)}</span>
+          <button class="log-mac-nav-btn" id="log-mac-next" aria-label="Next day" ${isToday?'disabled':''}>›</button>
+        </div>
+        <!-- Row 1: search pill (right) -->
         <div class="mac-search-pill-wrap" id="mac-search-wrap">
           <div class="mac-search-pill" id="mac-search-pill">
             <svg class="mac-search-pill__icon" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.5">
@@ -120,7 +122,42 @@ function renderLogShellMac(date) {
       <div id="log-meals" class="log-meals"></div>
     </div>`;
   bindTitleInput('log-title-input');
+  bindMacDateNav(date);
   bindMacSearch();
+}
+
+function formatMacDate(dateStr) {
+  if (!dateStr) return '';
+  try {
+    const parts = dateStr.replace(/^[^,]+,/, '').split('/');
+    const day = parseInt(parts[0]), month = parseInt(parts[1])-1, year = 2000+parseInt(parts[2]);
+    const d = new Date(year, month, day);
+    const DOW = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+    const MON = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+    return dateStr === today() ? `Today, ${day} ${MON[month]}` : `${DOW[d.getDay()]}, ${day} ${MON[month]}`;
+  } catch { return dateStr; }
+}
+
+// ── Mac date nav arrows ────────────────────────────────────────
+function bindMacDateNav(date) {
+  document.getElementById('log-mac-prev')?.addEventListener('click', () => navigateDate(-1));
+  document.getElementById('log-mac-next')?.addEventListener('click', () => navigateDate(1));
+}
+
+async function navigateDate(delta) {
+  const current = store.state.currentDate || today();
+  const d       = parseDate(current);
+  d.setDate(d.getDate() + delta);
+  const newDate = formatDate(d);
+  store.setCurrentDate(newDate);
+  // Update label
+  const label = document.getElementById('log-mac-date-label');
+  if (label) label.textContent = formatMacDate(newDate);
+  const nextBtn = document.getElementById('log-mac-next');
+  if (nextBtn) nextBtn.disabled = newDate === formatDate(new Date());
+  // Notify nav-bar pill
+  try { const m = await import('./main.js'); m.notifyDateChange?.(); } catch {}
+  await loadAndRender(newDate);
 }
 
 function bindTitleInput(id) {
@@ -137,7 +174,6 @@ function bindTitleInput(id) {
   input.addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();input.blur();}if(e.key==='Escape'){input.value=store.state.settings?.day_title||'';input.blur();}});
 }
 
-// ── Mobile search — suppress iOS keyboard toolbar ─────────────
 function bindMobileSearch(id) {
   const input = document.getElementById(id); if (!input) return;
   input.addEventListener('focus', async () => {
@@ -147,7 +183,7 @@ function bindMobileSearch(id) {
   });
 }
 
-// ── Mac search ─────────────────────────────────────────────────
+// ── Mac search pill ────────────────────────────────────────────
 let _macSelFood = null;
 
 function bindMacSearch() {
@@ -220,7 +256,10 @@ function bindMacSearch() {
     if(!_macSelFood)return;
     const food=_macSelFood,amount=parseFloat(amountIn.value),meal=document.getElementById('mac-add-meal')?.value||'Breakfast';
     if(!amount||amount<=0){showToast('Enter a valid amount','error');return;}
+    // Processing: lock entire add-bar
     addBtn.disabled=true;addBtn.textContent='Adding…';
+    amountIn.disabled=true;
+    document.getElementById('mac-add-meal').disabled=true;
     try{
       const date=store.state.currentDate||today(),ratio=amount/(food.amount||100);
       await addLogEntry({date,mealType:meal,foodNo:food.no,name:food.name,amount,unit:food.unit||'g',
@@ -233,7 +272,11 @@ function bindMacSearch() {
       renderLog(date,store.state.dailyLog[date]);
       showToast(`${food.name} added ✓`,'success');hideDD();input.value='';
     }catch(err){console.error('[log] mac add:',err);showToast('Failed to add','error');}
-    finally{addBtn.disabled=false;addBtn.textContent='+ Add';}
+    finally{
+      addBtn.disabled=false;addBtn.textContent='+ Add';
+      amountIn.disabled=false;
+      document.getElementById('mac-add-meal').disabled=false;
+    }
   });
 }
 
@@ -255,7 +298,7 @@ function renderLog(date,entries){
   renderSidebarSummary(entries);
 }
 
-// ── iPhone macro strip — 5 chips including Fibre ──────────────
+// ── iPhone macro strip ─────────────────────────────────────────
 function renderMacroStrip(entries) {
   const el=document.getElementById('log-macro-strip');if(!el)return;
   const t=sumNutrients(entries),s=store.state.settings||{};
@@ -278,7 +321,7 @@ function renderMacroStrip(entries) {
   }).join('');
 }
 
-// ── Sidebar summary — Remaining can be negative (show red) ────
+// ── Sidebar summary ────────────────────────────────────────────
 export function renderSidebarSummary(entries) {
   const el=document.getElementById('sidebar-summary');if(!el)return;
   const date=store.state.currentDate||today();
@@ -306,14 +349,10 @@ export function renderSidebarSummary(entries) {
     return `<div class="sidebar-macro"><div class="sidebar-macro__header"><span class="sidebar-macro__label"><span class="sidebar-macro__emoji">${m.emoji}</span>${m.label}</span><span class="sidebar-macro__value">${disp} / ${tDisp}${m.unit}</span></div>${bar(m.value,m.target)}</div>`;
   }).join('');
   const minHTML=minerals.map(m=>`<div class="sidebar-macro"><div class="sidebar-macro__header"><span class="sidebar-macro__label"><span class="sidebar-macro__emoji">${m.emoji}</span>${m.label}</span><span class="sidebar-macro__value">${Math.round(m.value)} / ${Math.round(m.target)}${m.unit}</span></div>${bar(m.value,m.target)}</div>`).join('');
-  // Remaining: allow negative, show red if < 0
   const remHTML=macros.slice(0,4).map(m=>{
     const rem=m.label==='Calories'?Math.round(m.target-m.value):r1(m.target-m.value);
     const negCls=rem<0?'sidebar-remaining-card--negative':'';
-    return `<div class="sidebar-remaining-card ${negCls}">
-      <div class="sidebar-remaining-card__label">${m.emoji} ${m.label}</div>
-      <div class="sidebar-remaining-card__value">${rem}${m.unit}</div>
-    </div>`;
+    return `<div class="sidebar-remaining-card ${negCls}"><div class="sidebar-remaining-card__label">${m.emoji} ${m.label}</div><div class="sidebar-remaining-card__value">${rem}${m.unit}</div></div>`;
   }).join('');
   el.innerHTML=`${mHTML}<hr class="sidebar-divider"><div class="sidebar-minerals-title">Minerals</div>${minHTML}<hr class="sidebar-divider"><div class="sidebar-remaining-title">Remaining today</div><div class="sidebar-remaining-grid">${remHTML}`;
 }
@@ -354,7 +393,7 @@ function renderMealSection(mealType,entries) {
     </div>`;
 }
 
-// ── Entry row — amount edit shows live nutrition update ────────
+// ── Entry row ──────────────────────────────────────────────────
 function renderEntryRow(entry) {
   const cals=Math.round(Number(entry.calories)||0);
   const p=Number(entry.protein)||0,c=Number(entry.carbs)||0,f=Number(entry.fat)||0,fi=Number(entry.fibre)||0;
@@ -412,56 +451,81 @@ async function handleToggleFav(btn) {
   catch(err){if(fs instanceof Set){wasFav?fs.add(foodNo):fs.delete(foodNo);}btn.classList.toggle('entry-row__star-btn--active',wasFav);console.error('[log] toggleFav:',err);}
 }
 
-// ── Amount edit — live nutrition preview ───────────────────────
+// ── Amount edit — processing until Meal Header updates ─────────
 function handleAmountEdit(btn) {
   if (btn.querySelector('input')) return;
-  const rowIndex=Number(btn.dataset.rowIndex);
-  const oldAmt=Number(btn.dataset.amount);
-  const unit=btn.dataset.unit;
-  const row=btn.closest('.entry-row');
-  const baseAmt=Number(row?.dataset.baseAmount)||oldAmt;
+  const rowIndex  = Number(btn.dataset.rowIndex);
+  const oldAmt    = Number(btn.dataset.amount);
+  const unit      = btn.dataset.unit;
+  const row       = btn.closest('.entry-row');
+  const baseAmt   = Number(row?.dataset.baseAmount) || oldAmt;
+  const section   = row?.closest('.meal-section');
 
-  btn.innerHTML=`<input class="entry-amount-input" type="number" value="${oldAmt}" min="1" step="1" inputmode="decimal" style="width:52px;text-align:right;font-size:13px">`;
-  const input=btn.querySelector('input');input.focus();input.select();
+  // Replace badge with input
+  btn.innerHTML = `<input class="entry-amount-input" type="number" value="${oldAmt}"
+    min="1" step="1" inputmode="decimal"
+    style="width:52px;text-align:right;font-size:16px;border:none;background:transparent;outline:none;font-family:inherit;">`;
+  const input = btn.querySelector('input');
+  input.focus(); input.select();
 
-  // Live update nutrition display
-  input.addEventListener('input',()=>{
-    const newAmt=parseFloat(input.value)||0;
-    if(newAmt<=0||!row)return;
-    const ratio=newAmt/baseAmt;
-    const baseCal=Number(row.dataset.baseCalories)||0;
-    const baseP=Number(row.dataset.baseProtein)||0;
-    const baseC=Number(row.dataset.baseCarbs)||0;
-    const baseF=Number(row.dataset.baseFat)||0;
-    const baseFi=Number(row.dataset.baseFibre)||0;
-    const macrosEl=document.getElementById(`macros-${rowIndex}`);
-    if(macrosEl){
-      macrosEl.innerHTML=`
-        <span class="entry-row__cals">${Math.round(baseCal*ratio)} kcal</span>
-        <span>P ${r1(baseP*ratio)}g</span>
-        <span>C ${r1(baseC*ratio)}g</span>
-        <span>F ${r1(baseF*ratio)}g</span>
-        <span>Fi ${r1(baseFi*ratio)}g</span>`;
+  // Live nutrition preview while typing
+  input.addEventListener('input', () => {
+    const newAmt = parseFloat(input.value) || 0;
+    if (newAmt <= 0 || !row) return;
+    const ratio = newAmt / baseAmt;
+    const macrosEl = document.getElementById(`macros-${rowIndex}`);
+    if (macrosEl) {
+      macrosEl.innerHTML = `
+        <span class="entry-row__cals">${Math.round((Number(row.dataset.baseCalories)||0)*ratio)} kcal</span>
+        <span>P ${r1((Number(row.dataset.baseProtein)||0)*ratio)}g</span>
+        <span>C ${r1((Number(row.dataset.baseCarbs)||0)*ratio)}g</span>
+        <span>F ${r1((Number(row.dataset.baseFat)||0)*ratio)}g</span>
+        <span>Fi ${r1((Number(row.dataset.baseFibre)||0)*ratio)}g</span>`;
     }
   });
 
-  const confirm=async()=>{
-    const newAmt=parseFloat(input.value);
-    if(!newAmt||newAmt<=0||newAmt===oldAmt){btn.textContent=`${oldAmt}${unit}`;return;}
-    btn.textContent=`${newAmt}${unit}`;btn.dataset.amount=newAmt;
-    await handleUpdate(rowIndex,newAmt);
-  };
-  input.addEventListener('blur',confirm);
-  input.addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();input.blur();}if(e.key==='Escape'){btn.textContent=`${oldAmt}${unit}`;}});
-}
+  const confirm = async () => {
+    const newAmt = parseFloat(input.value);
+    if (!newAmt || newAmt <= 0 || newAmt === oldAmt) {
+      btn.textContent = `${oldAmt}${unit}`;
+      return;
+    }
+    // ── Processing: lock the entire entry row ──────────────────
+    btn.textContent = `${newAmt}${unit} ⏳`;
+    btn.disabled = true;
+    // Disable star + delete in this row too
+    const star   = row?.querySelector('.entry-row__star-btn');
+    const del    = row?.querySelector('.entry-row__delete-btn');
+    if (star) star.disabled = true;
+    if (del)  del.disabled  = true;
+    // Dim the section header to indicate it's stale
+    if (section) section.style.opacity = '0.6';
 
-async function handleUpdate(rowIndex,newAmount) {
-  try{
-    await updateLogEntry(rowIndex,newAmount);
-    const date=store.state.currentDate||today();
-    invalidateLogCache(date);store.state.dailyLog[date]=await getDailyLog(date);
-    renderLog(date,store.state.dailyLog[date]);
-  }catch(err){console.error('[log] handleUpdate:',err);showToast('Failed to update','error');}
+    try {
+      await updateLogEntry(rowIndex, newAmt);
+      const date = store.state.currentDate || today();
+      invalidateLogCache(date);
+      store.state.dailyLog[date] = await getDailyLog(date);
+      // Re-render everything — section header will update
+      renderLog(date, store.state.dailyLog[date]);
+      // renderLog replaces DOM, so no need to restore manually
+    } catch (err) {
+      console.error('[log] handleUpdate:', err);
+      showToast('Failed to update — please try again', 'error');
+      // Restore on error
+      btn.textContent = `${oldAmt}${unit}`;
+      btn.disabled = false;
+      if (star) star.disabled = false;
+      if (del)  del.disabled  = false;
+      if (section) section.style.opacity = '';
+    }
+  };
+
+  input.addEventListener('blur', confirm);
+  input.addEventListener('keydown', e => {
+    if (e.key === 'Enter') { e.preventDefault(); input.blur(); }
+    if (e.key === 'Escape') { btn.textContent = `${oldAmt}${unit}`; }
+  });
 }
 
 async function handleDelete(rowIndex) {
@@ -477,10 +541,10 @@ async function handleDelete(rowIndex) {
   renderMacroStrip(store.state.dailyLog[date]||[]);
   renderSidebarSummary(store.state.dailyLog[date]||[]);
   deleteLogEntry(rowIndex).then(()=>{invalidateLogCache(date);showToast('Entry deleted','success');})
-    .catch(err=>{console.error('[log] handleDelete failed:',err);showToast('Delete failed — please refresh','error');invalidateLogCache(date);});
+    .catch(err=>{console.error('[log] handleDelete:',err);showToast('Delete failed — please refresh','error');invalidateLogCache(date);});
 }
 
-// ── Mac drag & drop ────────────────────────────────────────────
+// ── Mac drag ──────────────────────────────────────────────────
 function bindDragMove(container) {
   let dragRowIndex=null;
   container.addEventListener('dragstart',e=>{const row=e.target.closest('.entry-row');if(!row)return;dragRowIndex=Number(row.dataset.rowIndex);e.dataTransfer.effectAllowed='move';setTimeout(()=>row.style.opacity='0.4',0);});
@@ -492,10 +556,10 @@ function bindDragMove(container) {
   });
 }
 
-// ── iPhone touch drag ──────────────────────────────────────────
+// ── Touch drag (iPhone) ────────────────────────────────────────
 function bindTouchDrag(container) {
   let _dragRow=null,_dragRowIndex=null,_clone=null,_timer=null,_dragging=false;
-  function cleanup() {
+  function cleanup(){
     clearTimeout(_timer);_timer=null;_dragging=false;
     if(_clone){_clone.remove();_clone=null;}
     if(_dragRow){_dragRow.style.opacity='';_dragRow=null;}
@@ -541,8 +605,7 @@ document.addEventListener('contextmenu',e=>{
   const row=e.target.closest('.entry-row');if(!row)return;
   const rowIndex=Number(row.dataset.rowIndex);
   const entry=(store.state.dailyLog[store.state.currentDate||today()]||[]).find(ev=>ev.rowIndex===rowIndex);
-  if(!entry)return;e.preventDefault();
-  showContextMenu(e.clientX,e.clientY,rowIndex,entry.mealType);
+  if(!entry)return;e.preventDefault();showContextMenu(e.clientX,e.clientY,rowIndex,entry.mealType);
 });
 
 function showContextMenu(x,y,rowIndex,currentMeal) {
@@ -567,7 +630,6 @@ async function moveEntry(rowIndex,targetMeal) {
   }catch(err){console.error('[log] moveEntry:',err);showToast('Failed to move','error');}
 }
 
-// ── Save Summary — processing state ───────────────────────────
 async function handleSync() {
   const date=store.state.currentDate||today();
   const btns=['log-sync-btn-mobile','sidebar-save-btn'].map(id=>document.getElementById(id)).filter(Boolean);

@@ -1860,3 +1860,133 @@ div.entry-row__right button.entry-row__delete-btn:hover {
   font-weight: 500;
   color: var(--color-text-primary);
 }
+/* ============================================================
+   patch5.css — append LAST to main.css
+   Fixes: food item font size, meal type font+bold,
+          Mac date nav arrows, amount edit processing state
+============================================================ */
+
+/* ── 1. Food item name — same size as Favourites ─────────────── */
+/* Favourites .favs-row__name is ~14px/0.875rem — match it */
+.entry-row__name {
+  font-size: 0.875rem !important;  /* 14px — same as favs-row__name */
+  font-weight: 500 !important;
+  line-height: 1.3;
+}
+/* Macro row slightly smaller */
+.entry-row__macros {
+  font-size: 0.72rem !important;
+}
+.entry-row__cals {
+  font-size: 0.72rem !important;
+  font-weight: 500 !important;
+}
+
+/* ── 2. Meal type name — +1 font size, bold ──────────────────── */
+.meal-section__name {
+  font-size: 0.95rem !important;   /* was ~0.85rem */
+  font-weight: 700 !important;     /* bold */
+  color: var(--color-text-primary) !important;
+  font-family: var(--font-sans) !important;
+}
+/* Meal icon circle slightly larger to match */
+.meal-icon-circle {
+  font-size: 16px !important;
+  width: 26px !important;
+  height: 26px !important;
+}
+
+/* ── 3. Mac date nav arrows (between title and search) ───────── */
+.log-mac-date-nav {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+  /* Centred between title and search pill */
+}
+.log-mac-date-label {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--color-text-primary);
+  font-family: var(--font-sans);
+  white-space: nowrap;
+  min-width: 120px;
+  text-align: center;
+}
+.log-mac-nav-btn {
+  background: transparent;
+  border: .5px solid var(--color-border);
+  border-radius: 6px;
+  width: 24px;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 15px;
+  color: var(--color-text-secondary);
+  cursor: pointer;
+  transition: background .12s, color .12s;
+  font-family: var(--font-sans);
+  line-height: 1;
+}
+.log-mac-nav-btn:hover:not(:disabled) {
+  background: var(--color-accent-light);
+  color: var(--color-accent-dark);
+  border-color: var(--color-accent);
+}
+.log-mac-nav-btn:disabled {
+  opacity: 0.3;
+  cursor: not-allowed;
+}
+
+/* Mac header layout: title | date-nav | search — all on one row */
+.log-mac-header {
+  display: flex !important;
+  flex-direction: row !important;
+  align-items: center !important;
+  gap: 12px !important;
+  padding-bottom: 10px !important;
+}
+.log-mac-header .page-title-wrap {
+  flex-shrink: 0;
+}
+.log-mac-header .log-mac-date-nav {
+  /* Takes up remaining space in middle */
+  flex: 1;
+  justify-content: center;
+}
+.log-mac-header .mac-search-pill-wrap {
+  flex-shrink: 0;
+}
+/* Remove the spacer since date-nav takes that role */
+.log-mac-header .page-header__spacer {
+  display: none !important;
+}
+
+/* ── 4. Amount edit — processing indicator on badge ─────────── */
+/* When amount btn shows "Xunit ⏳" it should look different */
+.entry-row__amount-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+  background: var(--color-border) !important;
+  color: var(--color-text-secondary) !important;
+}
+/* Row when processing (section fades to show it's stale) */
+.entry-row--processing {
+  pointer-events: none;
+  opacity: 0.6;
+}
+
+/* ── 5. Amount input inside badge — no zoom, clean look ─────── */
+input.entry-amount-input {
+  font-size: 16px !important;  /* prevent iOS zoom */
+  background: transparent !important;
+  border: none !important;
+  outline: none !important;
+  width: 52px !important;
+  text-align: right !important;
+  font-family: var(--font-sans) !important;
+  color: var(--color-accent-dark) !important;
+  font-weight: 500 !important;
+  padding: 0 !important;
+}
