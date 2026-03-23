@@ -1,7 +1,7 @@
 // ============================================================
 // NutriLog — log.js
 // B4: read-only display
-// B5: add/delete/update entry interactions + Sync
+// B5: CRUD + Mac dual-column sidebar
 // ============================================================
 
 import { CONFIG }                                          from '../config.js';
@@ -9,7 +9,9 @@ import { getDailyLog, deleteLogEntry, updateLogEntry,
          syncDailySummary }                                from './api.js';
 import { store }                                           from './store.js';
 import { showToast }                                       from './ui.js';
-import { today, formatDate, parseDate, calcCalories }      from './utils.js';
+import { today, formatDate, parseDate }                    from './utils.js';
+
+const isMac = () => window.innerWidth >= 768;
 
 // ── Init ─────────────────────────────────────────────────────
 
@@ -21,7 +23,6 @@ export async function initLog() {
   console.log('[log] initLog → ready');
 }
 
-// Called from search.js after a food is added
 export function invalidateLogCache(date) {
   delete store.state.dailyLog[date];
 }
@@ -36,7 +37,7 @@ function renderLogShell(date) {
 
   view.innerHTML = `
     <div class="log-page">
-      <header class="page-header log-page__header">
+      <header class="page-header">
         <button class="log-nav-btn" id="log-prev" aria-label="Previous day">‹</button>
         <div class="log-date-wrap">
           <h2 class="page-header__title" id="log-date-label">${date}</h2>
@@ -45,28 +46,34 @@ function renderLogShell(date) {
           ${isToday ? 'disabled' : ''}>›</button>
       </header>
 
-      <div class="log-body">
-        <!-- Left: meal sections -->
-        <div class="log-body__left">
-          <div id="log-meals" class="log-meals"></div>
-          <div class="log-sync-wrap">
-            <button id="log-sync-btn" class="btn btn--ghost log-sync-btn">
-              ${CONFIG.labels.syncButton}
-            </button>
-          </div>
-        </div>
+      <!-- Mobile: summary strip inline -->
+      <div id="log-summary-strip" class="log-summary-strip"></div>
 
-        <!-- Right: summary panel (Mac only) -->
-        <aside class="log-body__right">
-          <div id="log-summary-strip" class="log-summary-strip"></div>
-        </aside>
+      <!-- Meal list -->
+      <div id="log-meals" class="log-meals"></div>
+
+      <!-- Mobile: sync button at bottom -->
+      <div class="log-sync-wrap">
+        <button id="log-sync-btn-mobile" class="btn btn--ghost log-sync-btn">
+          ${CONFIG.labels.syncButton}
+        </button>
       </div>
+
+      <!-- Mac: right sidebar -->
+      <aside class="log-sidebar" id="log-sidebar">
+        <p class="log-sidebar__title">Today's Nutrition</p>
+        <div class="sidebar-summary" id="sidebar-summary"></div>
+        <button id="log-sync-btn-sidebar" class="btn btn--primary sidebar-sync-btn">
+          ${CONFIG.labels.syncButton}
+        </button>
+      </aside>
     </div>
   `;
 
   document.getElementById('log-prev')?.addEventListener('click', () => navigateDate(-1));
   document.getElementById('log-next')?.addEventListener('click', () => navigateDate(1));
-  document.getElementById('log-sync-btn')?.addEventListener('click', handleSync);
+  document.getElementById('log-sync-btn-mobile')?.addEventListener('click', handleSync);
+  document.getElementById('log-sync-btn-sidebar')?.addEventListener('click', handleSync);
 }
 
 // ── Date navigation ───────────────────────────────────────────
@@ -110,16 +117,13 @@ function showLoadingState() {
 // ── Render ────────────────────────────────────────────────────
 
 function renderLog(date, entries) {
-  renderSummaryStrip(entries);
+  renderSummary(entries);
   renderMealSections(entries);
 }
 
-// ── Summary strip ─────────────────────────────────────────────
+// ── Summary (mobile strip + Mac sidebar) ──────────────────────
 
-function renderSummaryStrip(entries) {
-  const strip = document.getElementById('log-summary-strip');
-  if (!strip) return;
-
+function renderSummary(entries) {
   const totals  = sumNutrients(entries);
   const s       = store.state.settings || {};
   const targets = {
@@ -138,8 +142,19 @@ function renderSummaryStrip(entries) {
     { label: 'Fibre',    unit: 'g',    value: totals.fibre,    target: targets.fibre    },
   ];
 
-  strip.innerHTML = `<div class="summary-strip">${macros.map(renderMacroBar).join('')}</div>`;
+  const barsHTML = macros.map(renderMacroBar).join('');
+
+  // Mobile strip
+  const strip = document.getElementById('log-summary-strip');
+  if (strip) strip.innerHTML = `<div class="summary-strip">${barsHTML}</div>`;
+
+  // Mac sidebar
+  const sidebar = document.getElementById('sidebar-summary');
+  if (sidebar) sidebar.innerHTML = barsHTML;
 }
+
+// Keep public alias for delete handler
+function renderSummaryStrip(entries) { renderSummary(entries); }
 
 function renderMacroBar({ label, unit, value, target }) {
   const pct       = target > 0 ? Math.min((value / target) * 100, 150) : 0;
@@ -208,8 +223,10 @@ function renderEntryRow(entry) {
         <div class="entry-row__content">
           <div class="entry-row__info">
             <span class="entry-row__name">${escapeHtml(entry.name)}</span>
-            <button class="entry-row__amount-btn" data-row-index="${entry.rowIndex}"
-                    data-amount="${entry.amount}" data-unit="${entry.unit}">
+            <button class="entry-row__amount-btn"
+                    data-row-index="${entry.rowIndex}"
+                    data-amount="${entry.amount}"
+                    data-unit="${entry.unit}">
               ${entry.amount}${entry.unit}
             </button>
           </div>
@@ -219,8 +236,9 @@ function renderEntryRow(entry) {
             <span class="entry-row__minerals">Na ${na}mg &nbsp; K ${k}mg</span>
           </div>
         </div>
-        <button class="entry-row__delete-btn" data-row-index="${entry.rowIndex}"
-                aria-label="Delete entry">Delete</button>
+        <button class="entry-row__delete-btn"
+                data-row-index="${entry.rowIndex}"
+                aria-label="Delete">Delete</button>
       </div>
     </div>`;
 }
@@ -228,36 +246,25 @@ function renderEntryRow(entry) {
 // ── Events ────────────────────────────────────────────────────
 
 function bindEntryEvents(container) {
-  // Amount inline edit
   container.querySelectorAll('.entry-row__amount-btn').forEach(btn => {
     btn.addEventListener('click', () => handleAmountEdit(btn));
   });
-
-  // Swipe-to-delete (touch)
-  container.querySelectorAll('.entry-row').forEach(row => {
-    bindSwipeDelete(row);
-  });
-
-  // Delete button click (also for mouse on desktop)
+  container.querySelectorAll('.entry-row').forEach(row => bindSwipeDelete(row));
   container.querySelectorAll('.entry-row__delete-btn').forEach(btn => {
     btn.addEventListener('click', () => handleDelete(Number(btn.dataset.rowIndex)));
   });
 }
 
-// ── Amount inline edit ────────────────────────────────────────
+// ── Amount edit ───────────────────────────────────────────────
 
 function handleAmountEdit(btn) {
-  if (btn.querySelector('input')) return; // already editing
-
+  if (btn.querySelector('input')) return;
   const rowIndex  = Number(btn.dataset.rowIndex);
   const oldAmount = Number(btn.dataset.amount);
   const unit      = btn.dataset.unit;
 
-  btn.innerHTML = `
-    <input class="entry-amount-input" type="number" value="${oldAmount}"
-           min="1" step="1" inputmode="decimal"
-           style="width:60px;text-align:right;" />
-  `;
+  btn.innerHTML = `<input class="entry-amount-input" type="number"
+    value="${oldAmount}" min="1" step="1" inputmode="decimal" style="width:60px;text-align:right;"/>`;
 
   const input = btn.querySelector('input');
   input.focus();
@@ -269,17 +276,15 @@ function handleAmountEdit(btn) {
       btn.textContent = `${oldAmount}${unit}`;
       return;
     }
-    btn.textContent = `${newAmount}${unit}`;
+    btn.textContent   = `${newAmount}${unit}`;
     btn.dataset.amount = newAmount;
     await handleUpdate(rowIndex, newAmount);
   };
 
-  input.addEventListener('blur',  confirm);
+  input.addEventListener('blur', confirm);
   input.addEventListener('keydown', e => {
     if (e.key === 'Enter') { e.preventDefault(); input.blur(); }
-    if (e.key === 'Escape') {
-      btn.textContent = `${oldAmount}${unit}`;
-    }
+    if (e.key === 'Escape') { btn.textContent = `${oldAmount}${unit}`; }
   });
 }
 
@@ -288,7 +293,8 @@ async function handleUpdate(rowIndex, newAmount) {
     await updateLogEntry(rowIndex, newAmount);
     const date = store.state.currentDate || today();
     invalidateLogCache(date);
-    await loadAndRender(date);
+    store.state.dailyLog[date] = await getDailyLog(date);
+    renderSummary(store.state.dailyLog[date]);
     console.log(`[log] handleUpdate → row=${rowIndex} amount=${newAmount}`);
   } catch (err) {
     console.error('[log] handleUpdate →', err);
@@ -296,7 +302,7 @@ async function handleUpdate(rowIndex, newAmount) {
   }
 }
 
-// ── Swipe to delete ───────────────────────────────────────────
+// ── Swipe to delete (mobile) ──────────────────────────────────
 
 function bindSwipeDelete(row) {
   let startX = 0, isDragging = false;
@@ -304,16 +310,13 @@ function bindSwipeDelete(row) {
   if (!container) return;
 
   row.addEventListener('touchstart', e => {
-    startX     = e.touches[0].clientX;
-    isDragging = true;
+    startX = e.touches[0].clientX; isDragging = true;
   }, { passive: true });
 
   row.addEventListener('touchmove', e => {
     if (!isDragging) return;
     const dx = e.touches[0].clientX - startX;
-    if (dx < 0) {
-      container.style.transform = `translateX(${Math.max(dx, -80)}px)`;
-    }
+    if (dx < 0) container.style.transform = `translateX(${Math.max(dx, -80)}px)`;
   }, { passive: true });
 
   row.addEventListener('touchend', e => {
@@ -336,20 +339,15 @@ async function handleDelete(rowIndex) {
   try {
     await deleteLogEntry(rowIndex);
 
-    // Remove the entry row from DOM
     const rowEl = document.querySelector(`.entry-row[data-row-index="${rowIndex}"]`);
     if (rowEl) {
       const mealSection = rowEl.closest('.meal-section');
-      rowEl.style.transition = 'opacity 0.2s, max-height 0.25s';
-      rowEl.style.opacity    = '0';
-      rowEl.style.maxHeight  = rowEl.offsetHeight + 'px';
-      setTimeout(() => {
-        rowEl.style.maxHeight = '0';
-        rowEl.style.overflow  = 'hidden';
-      }, 10);
+      rowEl.style.transition  = 'opacity 0.2s, max-height 0.25s';
+      rowEl.style.opacity     = '0';
+      rowEl.style.maxHeight   = rowEl.offsetHeight + 'px';
+      setTimeout(() => { rowEl.style.maxHeight = '0'; rowEl.style.overflow = 'hidden'; }, 10);
       setTimeout(() => {
         rowEl.remove();
-        // Remove meal section if now empty
         if (mealSection && !mealSection.querySelector('.entry-row')) {
           mealSection.style.transition = 'opacity 0.2s';
           mealSection.style.opacity    = '0';
@@ -358,15 +356,13 @@ async function handleDelete(rowIndex) {
       }, 260);
     }
 
-    // Update local cache
     const date = store.state.currentDate || today();
     if (store.state.dailyLog[date]) {
       store.state.dailyLog[date] = store.state.dailyLog[date]
         .filter(e => e.rowIndex !== rowIndex);
-      renderSummaryStrip(store.state.dailyLog[date]);
+      renderSummary(store.state.dailyLog[date]);
     }
     invalidateLogCache(date);
-
     showToast('Entry deleted', 'success');
     console.log(`[log] handleDelete → row=${rowIndex}`);
   } catch (err) {
@@ -378,10 +374,11 @@ async function handleDelete(rowIndex) {
 // ── Sync ──────────────────────────────────────────────────────
 
 async function handleSync() {
-  const btn  = document.getElementById('log-sync-btn');
-  const date = store.state.currentDate || today();
-  if (btn) { btn.disabled = true; btn.textContent = 'Syncing…'; }
+  const date     = store.state.currentDate || today();
+  const btns     = ['log-sync-btn-mobile', 'log-sync-btn-sidebar']
+    .map(id => document.getElementById(id)).filter(Boolean);
 
+  btns.forEach(b => { b.disabled = true; b.textContent = 'Syncing…'; });
   try {
     await syncDailySummary(date);
     showToast('Synced to DailySummary ✓', 'success');
@@ -390,7 +387,7 @@ async function handleSync() {
     console.error('[log] handleSync →', err);
     showToast('Sync failed', 'error');
   } finally {
-    if (btn) { btn.disabled = false; btn.textContent = CONFIG.labels.syncButton; }
+    btns.forEach(b => { b.disabled = false; b.textContent = CONFIG.labels.syncButton; });
   }
 }
 
