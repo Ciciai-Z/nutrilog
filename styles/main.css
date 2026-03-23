@@ -1389,3 +1389,72 @@ ul { list-style: none; }
     display: none;
   }
 }
+/* ============================================================
+   Fix: swipe-to-delete blank space (append to styles/main.css)
+   ============================================================ */
+
+/* Entry row: relative container for absolute delete btn */
+.entry-row {
+  position: relative;
+  overflow: hidden;
+}
+
+.entry-row__swipe-container {
+  display: flex;
+  width: 100%;
+  transition: transform 0.2s ease;
+}
+
+.entry-row__content {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-4);
+  min-width: 0;
+  width: 100%;
+}
+
+/* Delete button: absolute, revealed by translateX */
+.entry-row__delete-btn {
+  position: absolute;
+  right: 0;
+  top: 0;
+  bottom: 0;
+  width: 80px;
+  background: var(--color-error);
+  color: #fff;
+  font-size: var(--text-sm);
+  font-weight: 600;
+  border: none;
+  cursor: pointer;
+  transform: translateX(100%);
+  transition: transform 0.2s ease;
+  white-space: nowrap;
+}
+
+.entry-row--swiped .entry-row__swipe-container {
+  transform: translateX(-80px);
+}
+
+.entry-row--swiped .entry-row__delete-btn {
+  transform: translateX(0);
+}
+
+/* Desktop: show on hover, no swipe needed */
+@media (min-width: 768px) {
+  .entry-row__delete-btn {
+    transform: translateX(0);
+    opacity: 0;
+    transition: opacity 0.15s;
+  }
+
+  .entry-row:hover .entry-row__delete-btn {
+    opacity: 1;
+  }
+
+  .entry-row--swiped .entry-row__swipe-container {
+    transform: none;
+  }
+}
