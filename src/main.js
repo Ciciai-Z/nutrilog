@@ -1,6 +1,6 @@
 // ============================================================
 // main.js — Router
-// Fixed: date picker covers full pill area, clean nav-bar
+// Fixed: date picker JS click (Safari compat), short mobile format
 // ============================================================
 import { isLoggedIn, renderAuthScreen, logout } from './auth.js';
 import { store } from './store.js';
@@ -19,33 +19,27 @@ function renderAppShell() {
       </main>
       <nav class="tab-bar" id="tab-bar">
         <button class="tab-bar__item" data-tab="today">
-          <span class="tab-bar__icon">📋</span>
-          <span class="tab-bar__label">Today</span>
+          <span class="tab-bar__icon">📋</span><span class="tab-bar__label">Today</span>
         </button>
         <button class="tab-bar__item" data-tab="favourites">
-          <span class="tab-bar__icon">⭐</span>
-          <span class="tab-bar__label">Favourites</span>
+          <span class="tab-bar__icon">⭐</span><span class="tab-bar__label">Favourites</span>
         </button>
         <button class="tab-bar__item" data-tab="meals">
-          <span class="tab-bar__icon">🍽</span>
-          <span class="tab-bar__label">Meals</span>
+          <span class="tab-bar__icon">🍽</span><span class="tab-bar__label">Meals</span>
         </button>
         <button class="tab-bar__item" data-tab="history">
-          <span class="tab-bar__icon">📅</span>
-          <span class="tab-bar__label">History</span>
+          <span class="tab-bar__icon">📅</span><span class="tab-bar__label">History</span>
         </button>
         <button class="tab-bar__item" data-tab="settings">
-          <span class="tab-bar__icon">⚙️</span>
-          <span class="tab-bar__label">Settings</span>
+          <span class="tab-bar__icon">⚙️</span><span class="tab-bar__label">Settings</span>
         </button>
-        <!-- Date picker — full-area clickable pill -->
-        <label class="nav-date-wrap" id="nav-date-wrap" title="Change date">
-          <span class="nav-date-pill" id="nav-date-pill"></span>
-          <input type="date" id="nav-date-input" class="nav-date-input" aria-label="Select date">
-        </label>
+        <!-- Date picker button — JS-driven, full area clickable -->
+        <div class="nav-date-wrap" id="nav-date-wrap">
+          <button class="nav-date-pill" id="nav-date-btn" type="button"></button>
+          <input type="date" id="nav-date-input" class="nav-date-input" tabindex="-1" aria-label="Select date">
+        </div>
         <button class="tab-bar__item tab-bar__item--logout" id="logout-btn">
-          <span class="tab-bar__icon">🔓</span>
-          <span class="tab-bar__label">Logout</span>
+          <span class="tab-bar__icon">🔓</span><span class="tab-bar__label">Logout</span>
         </button>
       </nav>
     </div>`;
@@ -68,13 +62,14 @@ function ISOToInternal(iso) {
   if (!iso) return '';
   try {
     const [y, m, d] = iso.split('-').map(Number);
-    const date = new Date(y, m-1, d);
     const DOW = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
-    return `${DOW[date.getDay()]},${d}/${m}/${String(y).slice(-2)}`;
+    return `${DOW[new Date(y,m-1,d).getDay()]},${d}/${m}/${String(y).slice(-2)}`;
   } catch { return ''; }
 }
 
-function formatPillDisplay(dateStr) {
+// Full format for Mac: "Today · Mon, 23 Mar"
+// Short format for iPhone: "Mon 23"
+function formatPillDisplay(dateStr, short = false) {
   if (!dateStr) return '';
   try {
     const parts = dateStr.replace(/^[^,]+,/, '').split('/');
@@ -84,28 +79,44 @@ function formatPillDisplay(dateStr) {
     const d     = new Date(year, month, day);
     const DOW = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
     const MON = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
-    return dateStr === today()
+    if (short) return `${DOW[d.getDay()]} ${day}`;
+    const isToday = dateStr === today();
+    return isToday
       ? `Today · ${DOW[d.getDay()]}, ${day} ${MON[month]}`
       : `${DOW[d.getDay()]}, ${day} ${MON[month]}`;
   } catch { return dateStr; }
 }
 
 function updateDatePill() {
-  const pill  = document.getElementById('nav-date-pill');
+  const btn   = document.getElementById('nav-date-btn');
   const input = document.getElementById('nav-date-input');
-  if (!pill) return;
+  if (!btn) return;
   const d = store.state.currentDate || today();
-  pill.textContent = formatPillDisplay(d);
+  const isMobile = window.innerWidth < 768;
+  btn.textContent = formatPillDisplay(d, isMobile);
   if (input) input.value = internalToISO(d);
 }
 
 function setupDatePicker() {
+  const btn   = document.getElementById('nav-date-btn');
   const input = document.getElementById('nav-date-input');
-  if (!input) return;
+  if (!btn || !input) return;
   updateDatePill();
+
+  // JS-driven click: works reliably on Safari iOS/Mac
+  btn.addEventListener('click', e => {
+    e.preventDefault();
+    e.stopPropagation();
+    // Try showPicker first (modern), fall back to click
+    if (typeof input.showPicker === 'function') {
+      try { input.showPicker(); } catch { input.click(); }
+    } else {
+      input.click();
+    }
+  });
+
   input.addEventListener('change', async () => {
-    const iso = input.value;
-    if (!iso) return;
+    const iso = input.value; if (!iso) return;
     const newDate = ISOToInternal(iso);
     if (!newDate || newDate === store.state.currentDate) return;
     store.setCurrentDate(newDate);
@@ -123,6 +134,9 @@ function setupDatePicker() {
     }
     console.log('[main] date changed →', newDate);
   });
+
+  // Update pill format on resize (portrait/landscape)
+  window.addEventListener('resize', () => updateDatePill(), { passive: true });
 }
 
 // ── Tab bar ────────────────────────────────────────────────────
@@ -134,8 +148,7 @@ function setupTabBar() {
     const btn = e.target.closest('.tab-bar__item');
     if (!btn) return;
     if (btn.id === 'logout-btn') { handleLogout(); return; }
-    const tab = btn.dataset.tab;
-    if (!tab) return;
+    const tab = btn.dataset.tab; if (!tab) return;
     navigateTo(tab);
   });
 }
@@ -147,15 +160,13 @@ export async function navigateTo(tab) {
 
   if (tab === currentTab && isSidebarTab && document.getElementById('mac-left')) return;
   if (tab === currentTab && !isSidebarTab && tab !== 'settings') {
-    document.querySelectorAll('.tab-bar__item[data-tab]').forEach(btn =>
-      btn.classList.toggle('tab-bar__item--active', btn.dataset.tab === tab));
+    document.querySelectorAll('.tab-bar__item[data-tab]').forEach(b=>b.classList.toggle('tab-bar__item--active',b.dataset.tab===tab));
     return;
   }
   if (isSidebarTab && !wasSidebarTab) macShellRendered = false;
 
   currentTab = tab;
-  document.querySelectorAll('.tab-bar__item[data-tab]').forEach(btn =>
-    btn.classList.toggle('tab-bar__item--active', btn.dataset.tab === tab));
+  document.querySelectorAll('.tab-bar__item[data-tab]').forEach(b=>b.classList.toggle('tab-bar__item--active',b.dataset.tab===tab));
 
   const content = document.getElementById('main-content');
   if (isSidebarTab) { await renderWithSidebar(tab, content); return; }
@@ -182,13 +193,11 @@ async function renderWithSidebar(tab, content) {
           <button id="sidebar-save-btn" class="sidebar-save-btn">Save Summary</button>
         </div>
       </div>`;
-    document.getElementById('sidebar-save-btn')?.addEventListener('click', () => {
-      import('./log.js').then(m => m.handleSyncFromSidebar?.());
-    });
+    document.getElementById('sidebar-save-btn')?.addEventListener('click', () =>
+      import('./log.js').then(m => m.handleSyncFromSidebar?.()));
     macShellRendered = true;
   }
-  const left = document.getElementById('mac-left');
-  if (!left) return;
+  const left = document.getElementById('mac-left'); if (!left) return;
   switch (tab) {
     case 'today':      left.innerHTML='<div id="view-today" class="page"></div>'; await initLog(true); break;
     case 'favourites': left.innerHTML='<div id="view-favourites" class="page"></div>'; renderSidebarSummary(); await initFavourites(true); break;
@@ -206,21 +215,19 @@ function handleLogout() {
   logout();
 }
 
-function placeholderPage(title, icon, note) {
-  return `<div class="page"><header class="page-header"><h2 class="page-header__title">${title}</h2></header>
-    <div class="page-placeholder"><span class="page-placeholder__icon">${icon}</span>
-    <p class="page-placeholder__text">${note}</p></div></div>`;
+function placeholderPage(title,icon,note) {
+  return `<div class="page"><header class="page-header"><h2 class="page-header__title">${title}</h2></header><div class="page-placeholder"><span class="page-placeholder__icon">${icon}</span><p class="page-placeholder__text">${note}</p></div></div>`;
 }
 
 async function onLogin() {
   store.setCurrentDate(today());
   try { const s=await getSettings(); store.setSettings(s); console.log('[main] settings loaded'); }
-  catch (ex) { console.error('[main] settings failed:', ex.message); }
+  catch(ex){console.error('[main] settings failed:',ex.message);}
   renderAppShell();
   Promise.all([
     import('./search.js').then(m=>m.ensureFoodsLoaded()),
     import('./search.js').then(m=>m.ensureFavouritesLoaded?.()),
-  ]).catch(err=>console.warn('[main] preload:', err.message));
+  ]).catch(err=>console.warn('[main] preload:',err.message));
 }
 
 window.addEventListener('nutrilog:login', onLogin);
