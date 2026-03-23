@@ -359,11 +359,10 @@ docs/
 
 ## 下一步行动
 
-**B3 完成 ✅ — 立即开始 B4 Today Log 展示**
+**B4 完成 ✅ — 立即开始 B5 Log entry CRUD**
 
-1. **B4（现在）** — Today Log 展示（只读），含日期选择器和 Macro 汇总
-2. **B4 → B5** — Log 展示 → Log CRUD，**B5 完成后开始日常使用**
-3. **B6 → B9** — 在可用基础上持续迭代
+1. **B5（现在）** — Log 完整增删改，搜索结果真正写入 DailyLog，**完成后即可日常使用**
+2. **B6 → B9** — 在可用基础上持续迭代
 
 ---
 
@@ -421,8 +420,8 @@ docs/
 | B1 | Auth + skeleton | ✅ 已完成 | 2026-03-22 | |
 | B2 | Food Search | ✅ 已完成 | 2026-03-23 | |
 | B3 | Settings | ✅ 已完成 | 2026-03-23 | |
-| B4 | Today Log 展示 | 🔄 进行中 | — | |
-| B5 | Log entry CRUD | ⬜ 未开始 | — | ⭐ 完成后即可日常使用 |
+| B4 | Today Log 展示 | ✅ 已完成 | 2026-03-23 | |
+| B5 | Log entry CRUD | 🔄 进行中 | — | ⭐ 完成后即可日常使用 |
 | B6 | Quick Add | ⬜ 未开始 | — | |
 | B7 | Custom Foods + Favourites | ⬜ 未开始 | — | |
 | B8 | Meal templates | ⬜ 未开始 | — | |
@@ -487,24 +486,25 @@ docs/
 
 ---
 
-### B4 · Today Log 展示（⬜ 未开始）
+### B4 · Today Log 展示（✅ 已完成，2026-03-23）
 
-**依赖：** B1 + B3（需要 targets 计算进度条）
+**验收通过：**
+- [x] 打开 Today 页显示 DailyLog 中现有数据
+- [x] 左右箭头切换日期 → 内容更新
+- [x] Macro 汇总进度条（Calories/Protein/Carbs/Fat/Fibre）
+- [x] 进度条颜色随目标值正确显示（正常/amber/red）
+- [x] 每条 entry 显示 P/C/F 宏量 + Na/K 矿物质
+- [x] 无数据日期显示空状态
 
-**目标：** 能看到已有的日志记录，含日期选择器和 Macro 汇总。此阶段只读，不增删改。
+**B4 期间修复/确认的问题：**
+- 日期格式确认为 `ddd,d/m/yy`（日/月/年），更新 `utils.js` 的 `formatDate` 和 `parseDate`
+- DailyLog sheet 无 MEAL_NO 列，修正 `config.gs` 列索引（去掉 mealNo，NAME 从 D 列索引 3 开始）
+- getDailyLog 增加日期格式兼容（normalise 去除逗号后空格）
+- Na/K 在 entry row 显示（`entry-row__minerals`）
 
-**包含文件：**
-```
-gas/Code.gs          ← 新增 getDailyLog
-src/log.js           ← Today 页面渲染（只读部分）
-styles/main.css      ← entry row, meal section, summary strip 样式
-```
+---
 
-**验收：**
-- [ ] 打开 Today 页显示 DailyLog 中现有数据
-- [ ] 切换日期 → 内容更新，无数据日期显示空状态
-- [ ] Macro 汇总数字与 Sheets 中手动计算一致
-- [ ] 进度条颜色随目标值正确显示
+### B5 · Log entry CRUD（🔄 进行中）⭐
 
 ---
 
