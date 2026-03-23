@@ -1,17 +1,15 @@
 // ============================================================
 // NutriLog — Google Apps Script Backend
-// Version: B5+fix — token validation relaxed for single-user
+// Fixed: buildFoodRecord correctly reads amount/unit
+//        (handles text-formatted numbers + non-100g entries)
 // ============================================================
 
 function doGet(e) {
   const params = e.parameter || {};
   const cb     = params.callback || 'cb';
   let result;
-  try {
-    result = route(params.action || '', params);
-  } catch (err) {
-    result = { ok: false, error: err.message };
-  }
+  try { result = route(params.action || '', params); }
+  catch (err) { result = { ok: false, error: err.message }; }
   return ContentService
     .createTextOutput(`${cb}(${JSON.stringify(result)})`)
     .setMimeType(ContentService.MimeType.JAVASCRIPT);
@@ -30,7 +28,7 @@ function route(action, params) {
     case 'deleteLogEntry':  return deleteLogEntry(params);
     case 'updateLogEntry':  return updateLogEntry(params);
     case 'syncDailySummary':return syncDailySummary(params);
-    default:                return { ok: false, error: `Unknown action: ${action}` };
+    default: return { ok: false, error: `Unknown action: ${action}` };
   }
 }
 
@@ -38,13 +36,26 @@ function getSheet(name) {
   return SpreadsheetApp.openById(CONFIG.spreadsheetId).getSheetByName(name);
 }
 
-// ── Token verification ─────────────────────────────────────────
-// Single-user app: any non-empty token from an authenticated session is valid.
-// The Apps Script URL is secret (gitignored), providing sufficient security.
+// Single-user: any non-empty token is valid
 function verifyToken(token) {
-  // Accept any non-empty token — prevents accidental unauthenticated calls
-  // but doesn't enforce single-session restriction across devices
   return typeof token === 'string' && token.length > 0;
+}
+
+// ── Helper: parse amount from cell value ──────────────────────
+// Handles: number 100, string "100", string "'100", empty, 0
+function parseAmount(raw) {
+  if (raw === null || raw === undefined || raw === '') return null;
+  // Strip leading apostrophe (text-formatted cells in Sheets)
+  const str = String(raw).replace(/^'+/, '').trim();
+  const n = parseFloat(str);
+  return (!isNaN(n) && n > 0) ? n : null;
+}
+
+// ── Helper: parse unit from cell value ────────────────────────
+function parseUnit(raw) {
+  if (raw === null || raw === undefined) return null;
+  const str = String(raw).replace(/^'+/, '').trim();
+  return str !== '' ? str : null;
 }
 
 // ── B1: verifyPin ──────────────────────────────────────────────
@@ -53,36 +64,25 @@ function verifyPin(params) {
   try {
     const p = JSON.parse(decodeURIComponent(params.payload || '{}'));
     hash = p.hash || p.pinHash || '';
-  } catch (e) {
-    return { ok: false, error: 'Invalid payload' };
-  }
+  } catch (e) { return { ok: false, error: 'Invalid payload' }; }
   if (!hash) return { ok: false, error: 'Missing hash' };
-
   const sh   = getSheet(CONFIG.sheets.settings);
   const data = sh.getDataRange().getValues();
   let storedHash = '';
-  for (const row of data) {
-    if (row[0] === 'pin_hash') { storedHash = row[1]; break; }
-  }
+  for (const row of data) { if (row[0] === 'pin_hash') { storedHash = row[1]; break; } }
   if (!storedHash || hash !== storedHash) return { ok: false, error: 'Invalid PIN' };
-
   const token    = Utilities.getUuid();
   let tokenRow   = -1;
-  for (let i = 0; i < data.length; i++) {
-    if (data[i][0] === 'session_token') { tokenRow = i + 1; break; }
-  }
-  if (tokenRow > 0) {
-    sh.getRange(tokenRow, 2).setValue(token);
-  } else {
-    sh.appendRow(['session_token', token]);
-  }
+  for (let i = 0; i < data.length; i++) { if (data[i][0] === 'session_token') { tokenRow = i + 1; break; } }
+  if (tokenRow > 0) sh.getRange(tokenRow, 2).setValue(token);
+  else sh.appendRow(['session_token', token]);
   return { ok: true, data: { token } };
 }
 
 // ── B1: Settings ───────────────────────────────────────────────
 function getSettings() {
   const data = getSheet(CONFIG.sheets.settings).getDataRange().getValues();
-  const s    = {};
+  const s = {};
   for (const row of data) { if (row[0]) s[row[0]] = row[1]; }
   return { ok: true, data: s };
 }
@@ -93,18 +93,15 @@ function updateSettings(params) {
   try {
     const p = JSON.parse(decodeURIComponent(params.payload || '{}'));
     settings = p.settings || p;
-  } catch (e) {
-    return { ok: false, error: 'Invalid payload JSON' };
-  }
-  delete settings['pin_hash'];
-  delete settings['session_token'];
+  } catch (e) { return { ok: false, error: 'Invalid payload JSON' }; }
+  delete settings['pin_hash']; delete settings['session_token'];
   const sh   = getSheet(CONFIG.sheets.settings);
   const data = sh.getDataRange().getValues();
   const idx  = {};
   for (let i = 0; i < data.length; i++) idx[data[i][0]] = i + 1;
   for (const [k, v] of Object.entries(settings)) {
-    if (idx[k]) { sh.getRange(idx[k], 2).setValue(v); }
-    else         { sh.appendRow([k, v]); }
+    if (idx[k]) sh.getRange(idx[k], 2).setValue(v);
+    else sh.appendRow([k, v]);
   }
   return { ok: true, data: null };
 }
@@ -151,17 +148,24 @@ function buildFoodRecord(r, C) {
   const protein = Number(r[C.protein]) || 0;
   const carbs   = Number(r[C.carbs])   || 0;
   const fat     = Number(r[C.fat])     || 0;
+
+  // Use actual amount/unit from DB — do NOT default to 100/g if DB has a real value
+  const amount = parseAmount(r[C.amount]) || 100;
+  const unit   = parseUnit(r[C.unit])     || 'g';
+
   return {
-    no: Number(r[C.no]), name: String(r[C.name] || ''),
-    amount: Number(r[C.amount] || 100), unit: String(r[C.unit] || 'g'),
-    calories: Math.round(fat*9 + carbs*4 + protein*4),
+    no:          Number(r[C.no]),
+    name:        String(r[C.name] || ''),
+    amount,
+    unit,
+    calories:    Math.round(fat * 9 + carbs * 4 + protein * 4),
     protein, carbs, fat,
-    fibre:     Number(r[C.fibre]     || 0),
-    sodium:    Number(r[C.sodium]    || 0),
-    potassium: Number(r[C.potassium] || 0),
+    fibre:       Number(r[C.fibre]       || 0),
+    sodium:      Number(r[C.sodium]      || 0),
+    potassium:   Number(r[C.potassium]   || 0),
     category:    String(r[C.category]    || ''),
     subcategory: String(r[C.subcategory] || ''),
-    isCustom: false,
+    isCustom:    false,
   };
 }
 
@@ -169,15 +173,19 @@ function buildCustomFoodRecord(r, C) {
   const protein = Number(r[C.protein]) || 0;
   const carbs   = Number(r[C.carbs])   || 0;
   const fat     = Number(r[C.fat])     || 0;
+  const amount  = parseAmount(r[C.amount]) || 100;
+  const unit    = parseUnit(r[C.unit])     || 'g';
   return {
-    no: Number(r[C.no]), name: String(r[C.name] || ''),
-    amount: Number(r[C.amount] || 100), unit: String(r[C.unit] || 'g'),
-    calories: Math.round(fat*9 + carbs*4 + protein*4),
+    no:        Number(r[C.no]),
+    name:      String(r[C.name] || ''),
+    amount, unit,
+    calories:  Math.round(fat * 9 + carbs * 4 + protein * 4),
     protein, carbs, fat,
-    fibre:     Number(r[C.fibre]     || 0),
-    sodium:    Number(r[C.sodium]    || 0),
-    potassium: Number(r[C.potassium] || 0),
-    category: 'Custom', isCustom: true,
+    fibre:     Number(r[C.fibre]      || 0),
+    sodium:    Number(r[C.sodium]     || 0),
+    potassium: Number(r[C.potassium]  || 0),
+    category:  'Custom',
+    isCustom:  true,
     isQuickAdd: r[C.isQuickAdd] === true || r[C.isQuickAdd] === 'TRUE',
   };
 }
@@ -187,27 +195,20 @@ function getFavourites(params) {
   if (!verifyToken(params.token || '')) return { ok: false, error: 'Unauthorized' };
   const rows = getSheet(CONFIG.sheets.favourites).getDataRange().getValues();
   const ids  = [];
-  for (let i = 1; i < rows.length; i++) {
-    const no = Number(rows[i][0]);
-    if (no) ids.push(no);
-  }
+  for (let i = 1; i < rows.length; i++) { const no = Number(rows[i][0]); if (no) ids.push(no); }
   return { ok: true, data: ids };
 }
 
 function toggleFavourite(params) {
   if (!verifyToken(params.token || '')) return { ok: false, error: 'Unauthorized' };
   let foodNo = 0;
-  try {
-    foodNo = Number(JSON.parse(decodeURIComponent(params.payload || '{}')).foodNo || 0);
-  } catch (e) { return { ok: false, error: 'Invalid payload' }; }
+  try { foodNo = Number(JSON.parse(decodeURIComponent(params.payload || '{}')).foodNo || 0); }
+  catch (e) { return { ok: false, error: 'Invalid payload' }; }
   if (!foodNo) return { ok: false, error: 'Missing foodNo' };
   const sh   = getSheet(CONFIG.sheets.favourites);
   const rows = sh.getDataRange().getValues();
   for (let i = 1; i < rows.length; i++) {
-    if (Number(rows[i][0]) === foodNo) {
-      sh.deleteRow(i + 1);
-      return { ok: true, data: { added: false } };
-    }
+    if (Number(rows[i][0]) === foodNo) { sh.deleteRow(i + 1); return { ok: true, data: { added: false } }; }
   }
   sh.appendRow([foodNo]);
   return { ok: true, data: { added: true } };
@@ -256,8 +257,7 @@ function addLogEntry(params) {
   catch (err) { return { ok: false, error: 'Invalid payload' }; }
   const C   = CONFIG.columns.dailyLog;
   const sh  = getSheet(CONFIG.sheets.dailyLog);
-  const now = new Date();
-  const dt  = Utilities.formatDate(now, Session.getScriptTimeZone(), "d/M/yy H:mm");
+  const dt  = Utilities.formatDate(new Date(), Session.getScriptTimeZone(), "d/M/yy H:mm");
   const row = [];
   row[C.date]            = e.date;
   row[C.mealType]        = e.mealType;
@@ -295,22 +295,22 @@ function updateLogEntry(params) {
   let payload;
   try { payload = JSON.parse(decodeURIComponent(params.payload || '{}')); }
   catch (e) { return { ok: false, error: 'Invalid payload' }; }
-  const rowIndex = Number(payload.rowIndex);
-  const newAmount= Number(payload.amount);
-  if (!rowIndex || rowIndex < 2)  return { ok: false, error: 'Invalid rowIndex' };
+  const rowIndex  = Number(payload.rowIndex);
+  const newAmount = Number(payload.amount);
+  if (!rowIndex || rowIndex < 2) return { ok: false, error: 'Invalid rowIndex' };
   if (!newAmount || newAmount <= 0) return { ok: false, error: 'Invalid amount' };
-  const sh  = getSheet(CONFIG.sheets.dailyLog);
-  const C   = CONFIG.columns.dailyLog;
-  const row = sh.getRange(rowIndex, 1, 1, 14).getValues()[0];
+  const sh    = getSheet(CONFIG.sheets.dailyLog);
+  const C     = CONFIG.columns.dailyLog;
+  const row   = sh.getRange(rowIndex, 1, 1, 14).getValues()[0];
   const ratio = newAmount / (Number(row[C.amount]) || 1);
   sh.getRange(rowIndex, C.amount   + 1).setValue(newAmount);
-  sh.getRange(rowIndex, C.calories + 1).setValue(Math.round((Number(row[C.calories])||0)*ratio));
-  sh.getRange(rowIndex, C.protein  + 1).setValue(Math.round(((Number(row[C.protein])||0)*ratio)*10)/10);
-  sh.getRange(rowIndex, C.carbs    + 1).setValue(Math.round(((Number(row[C.carbs])||0)*ratio)*10)/10);
-  sh.getRange(rowIndex, C.fat      + 1).setValue(Math.round(((Number(row[C.fat])||0)*ratio)*10)/10);
-  sh.getRange(rowIndex, C.fibre    + 1).setValue(Math.round(((Number(row[C.fibre])||0)*ratio)*10)/10);
-  sh.getRange(rowIndex, C.sodium   + 1).setValue(Math.round((Number(row[C.sodium])||0)*ratio));
-  sh.getRange(rowIndex, C.potassium+ 1).setValue(Math.round((Number(row[C.potassium])||0)*ratio));
+  sh.getRange(rowIndex, C.calories + 1).setValue(Math.round((Number(row[C.calories]) || 0) * ratio));
+  sh.getRange(rowIndex, C.protein  + 1).setValue(Math.round(((Number(row[C.protein])  || 0) * ratio) * 10) / 10);
+  sh.getRange(rowIndex, C.carbs    + 1).setValue(Math.round(((Number(row[C.carbs])    || 0) * ratio) * 10) / 10);
+  sh.getRange(rowIndex, C.fat      + 1).setValue(Math.round(((Number(row[C.fat])      || 0) * ratio) * 10) / 10);
+  sh.getRange(rowIndex, C.fibre    + 1).setValue(Math.round(((Number(row[C.fibre])    || 0) * ratio) * 10) / 10);
+  sh.getRange(rowIndex, C.sodium   + 1).setValue(Math.round((Number(row[C.sodium])    || 0) * ratio));
+  sh.getRange(rowIndex, C.potassium+ 1).setValue(Math.round((Number(row[C.potassium]) || 0) * ratio));
   return { ok: true, data: null };
 }
 
@@ -322,16 +322,14 @@ function syncDailySummary(params) {
   catch (e) { return { ok: false, error: 'Invalid payload' }; }
   const date = (payload.date || '').trim();
   if (!date) return { ok: false, error: 'Missing date' };
-
   const settingsData = getSheet(CONFIG.sheets.settings).getDataRange().getValues();
   const settingsMap  = {};
   for (const row of settingsData) { if (row[0]) settingsMap[row[0]] = Number(row[1]) || 0; }
-
   const logSh   = getSheet(CONFIG.sheets.dailyLog);
   const logRows = logSh.getDataRange().getValues();
   const C       = CONFIG.columns.dailyLog;
   const norm    = s => String(s).trim().replace(/,\s+/, ',');
-  const totals  = { calories:0, protein:0, carbs:0, fat:0, fibre:0 };
+  const totals  = { calories: 0, protein: 0, carbs: 0, fat: 0, fibre: 0 };
   for (let i = 1; i < logRows.length; i++) {
     const r = logRows[i];
     if (!r[C.date] || norm(r[C.date]) !== norm(date)) continue;
@@ -341,7 +339,6 @@ function syncDailySummary(params) {
     totals.fat      += Number(r[C.fat])      || 0;
     totals.fibre    += Number(r[C.fibre])    || 0;
   }
-
   const sumSh   = getSheet(CONFIG.sheets.dailySummary);
   const sumRows = sumSh.getDataRange().getValues();
   const CS      = CONFIG.columns.dailySummary;
@@ -351,17 +348,16 @@ function syncDailySummary(params) {
   newRow[CS.calorieTarget] = settingsMap['calorie_target'] || '';
   newRow[CS.calories]      = Math.round(totals.calories);
   newRow[CS.proteinTarget] = settingsMap['protein_target'] || '';
-  newRow[CS.protein]       = Math.round(totals.protein*10)/10;
+  newRow[CS.protein]       = Math.round(totals.protein * 10) / 10;
   newRow[CS.carbsTarget]   = settingsMap['carbs_target']   || '';
-  newRow[CS.carbs]         = Math.round(totals.carbs*10)/10;
+  newRow[CS.carbs]         = Math.round(totals.carbs * 10) / 10;
   newRow[CS.fatTarget]     = settingsMap['fat_target']     || '';
-  newRow[CS.fat]           = Math.round(totals.fat*10)/10;
+  newRow[CS.fat]           = Math.round(totals.fat * 10) / 10;
   newRow[CS.fibreTarget]   = settingsMap['fibre_target']   || '';
-  newRow[CS.fibre]         = Math.round(totals.fibre*10)/10;
-
+  newRow[CS.fibre]         = Math.round(totals.fibre * 10) / 10;
   for (let i = 2; i < sumRows.length; i++) {
     if (norm(String(sumRows[i][CS.date])) === norm(date)) {
-      sumSh.getRange(i+1, 1, 1, newRow.length).setValues([newRow]);
+      sumSh.getRange(i + 1, 1, 1, newRow.length).setValues([newRow]);
       return { ok: true, data: { updated: true } };
     }
   }

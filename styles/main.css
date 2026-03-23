@@ -1528,3 +1528,115 @@ ul { list-style: none; }
   appearance: none;
   -webkit-appearance: none;
 }
+/* ============================================================
+   patch3.css — append LAST to main.css
+   Forcibly corrects delete button (grey, not red, aligned with star)
+   and prevents text selection during touch drag
+============================================================ */
+
+/* ── FORCE entry row right side layout ──────────────────────── */
+/* Override ALL previous rules with maximum specificity */
+div.entry-row__main {
+  display: flex !important;
+  flex-direction: row !important;
+  align-items: center !important;
+}
+
+div.entry-row__right {
+  display: flex !important;
+  flex-direction: row !important;
+  align-items: center !important;
+  gap: 1px !important;
+  flex-shrink: 0 !important;
+  margin-left: 6px !important;
+  /* NO position:absolute, NO top/right offsets */
+}
+
+/* Amount badge */
+div.entry-row__right button.entry-row__amount-btn {
+  order: 1 !important;
+  position: static !important;
+  top: auto !important; right: auto !important;
+}
+
+/* Star ★ */
+div.entry-row__right button.entry-row__star-btn {
+  order: 2 !important;
+  position: static !important;
+  top: auto !important; right: auto !important;
+}
+
+/* Delete ✕ — GREY, small, never red */
+div.entry-row__right button.entry-row__delete-btn {
+  order: 3 !important;
+  position: static !important;
+  top: auto !important; right: auto !important;
+  /* Size */
+  width: 22px !important;
+  height: 22px !important;
+  font-size: 11px !important;
+  /* Appearance — always grey, NEVER red */
+  color: #C8C8C4 !important;
+  background: transparent !important;
+  border: none !important;
+  border-radius: 50% !important;
+  cursor: pointer !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  padding: 0 !important;
+  opacity: 0.55 !important;
+  transition: opacity 0.15s !important;
+}
+/* Hover: slightly more visible, still grey */
+div.entry-row__right button.entry-row__delete-btn:hover,
+div.entry-row__main:hover div.entry-row__right button.entry-row__delete-btn {
+  color: #9E9E96 !important;
+  background: transparent !important;
+  opacity: 1 !important;
+}
+/* Mobile: always a bit visible */
+@media (max-width: 767px) {
+  div.entry-row__right button.entry-row__delete-btn {
+    width: 26px !important;
+    height: 26px !important;
+    font-size: 12px !important;
+    opacity: 0.5 !important;
+  }
+}
+
+/* ── Touch drag — prevent text selection ─────────────────────── */
+/* Applied when drag is active */
+.log-meals {
+  -webkit-user-select: none;
+  user-select: none;
+}
+.entry-row {
+  -webkit-user-select: none;
+  user-select: none;
+  /* Prevent callout on long press */
+  -webkit-touch-callout: none;
+}
+.entry-row__name,
+.entry-row__macros {
+  -webkit-user-select: none;
+  user-select: none;
+  pointer-events: none; /* let touch events pass through to entry-row */
+}
+/* But keep buttons interactive */
+.entry-row__amount-btn,
+.entry-row__star-btn,
+.entry-row__delete-btn {
+  pointer-events: auto !important;
+}
+
+/* ── Drag handle visual indicator ────────────────────────────── */
+.entry-row {
+  cursor: grab;
+}
+.entry-row:active {
+  cursor: grabbing;
+}
+@media (max-width: 767px) {
+  .entry-row { cursor: default; }
+}
