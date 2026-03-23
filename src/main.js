@@ -1,6 +1,6 @@
 // ============================================================
 // main.js — 路由初始化，页面切换入口
-// Updated: B2 (wires up initSearch)
+// Updated: B3 (wires Settings tab to initSettings)
 // ============================================================
 
 import { isLoggedIn, renderAuthScreen } from './auth.js';
@@ -8,6 +8,7 @@ import { store }                        from './store.js';
 import { getSettings }                  from './api.js';
 import { today }                        from './utils.js';
 import { initSearch }                   from './search.js';
+import { initSettings }                 from './settings.js';
 
 // ── 页面骨架 HTML ─────────────────────────────────────────────
 
@@ -62,7 +63,6 @@ function setupTabBar() {
 async function navigateTo(tab) {
   currentTab = tab;
 
-  // 高亮当前 tab
   document.querySelectorAll('.tab-bar__item').forEach(btn => {
     btn.classList.toggle('tab-bar__item--active', btn.dataset.tab === tab);
   });
@@ -75,7 +75,6 @@ async function navigateTo(tab) {
       break;
 
     case 'search':
-      // B2: inject view container then hand off to search module
       content.innerHTML = '<div id="view-search" class="page"></div>';
       await initSearch();
       break;
@@ -89,7 +88,8 @@ async function navigateTo(tab) {
       break;
 
     case 'settings':
-      content.innerHTML = renderSettingsPage();
+      content.innerHTML = '<div id="view-settings" class="page"></div>';
+      initSettings();
       break;
 
     default:
@@ -125,30 +125,6 @@ function renderTodayPage() {
       <div class="page-placeholder">
         <span class="page-placeholder__icon">📋</span>
         <p class="page-placeholder__text">Log entries coming in B4 & B5</p>
-      </div>
-    </div>`;
-}
-
-// ── Settings 页面（B3 完善，现在显示骨架） ────────────────────
-
-function renderSettingsPage() {
-  const s = store.state.settings;
-  return `
-    <div class="page">
-      <header class="page-header">
-        <h2 class="page-header__title">Settings</h2>
-      </header>
-      <div class="card">
-        <p class="settings-note">Nutrition targets loaded from Google Sheets.</p>
-        <ul class="settings-list">
-          <li>Calories: <strong>${s.calorie_target || '—'} kcal</strong></li>
-          <li>Protein: <strong>${s.protein_target || '—'} g</strong></li>
-          <li>Carbs: <strong>${s.carbs_target || '—'} g</strong></li>
-          <li>Fat: <strong>${s.fat_target || '—'} g</strong></li>
-          <li>Fibre: <strong>${s.fibre_target || '—'} g</strong></li>
-          <li>Sodium: <strong>${s.sodium_target || '—'} mg</strong></li>
-        </ul>
-        <p class="settings-note">Full settings editor coming in B3.</p>
       </div>
     </div>`;
 }
