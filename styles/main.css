@@ -1054,3 +1054,128 @@ ul { list-style: none; }
 .tab-bar__item--logout:active {
   color: var(--color-error);
 }
+/* ============================================================
+   B5 Mac two-column layout — append to styles/main.css
+   ============================================================ */
+
+/* ── Log body: two-column on Mac ─────────────────────────── */
+
+.log-body {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.log-body__left {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.log-body__right {
+  display: none;  /* hidden on mobile */
+}
+
+/* ── Mac: side-by-side layout ────────────────────────────── */
+
+@media (min-width: 768px) {
+
+  /* Remove old max-width restriction */
+  .main-content {
+    max-width: 100% !important;
+    padding-top: 52px;
+    padding-bottom: 0;
+    display: flex;
+    flex-direction: column;
+    height: calc(100vh - 52px);
+    overflow: hidden;
+  }
+
+  /* Page takes full height */
+  .log-page {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+  }
+
+  /* Header stays on top */
+  .log-page__header {
+    flex-shrink: 0;
+    padding: 12px 24px;
+  }
+
+  /* Body fills remaining height */
+  .log-body {
+    flex: 1;
+    flex-direction: row;
+    overflow: hidden;
+    gap: 0;
+  }
+
+  /* Left column: scrollable log list */
+  .log-body__left {
+    flex: 0 0 60%;
+    overflow-y: auto;
+    border-right: 1px solid var(--color-border);
+    padding-bottom: 24px;
+  }
+
+  /* Right column: sticky summary panel */
+  .log-body__right {
+    display: flex;
+    flex-direction: column;
+    flex: 0 0 40%;
+    overflow-y: auto;
+    background: var(--color-bg-card);
+    padding: 24px;
+  }
+
+  /* Summary strip fills right panel */
+  .log-body__right .log-summary-strip {
+    background: transparent;
+    border-bottom: none;
+    padding: 0;
+  }
+
+  .log-body__right .summary-strip {
+    gap: var(--space-4);
+  }
+
+  .log-body__right .summary-macro {
+    gap: 6px;
+  }
+
+  .log-body__right .summary-macro__label {
+    font-size: var(--text-sm);
+  }
+
+  .log-body__right .summary-macro__value {
+    font-size: var(--text-base);
+  }
+
+  /* Right panel header */
+  .log-body__right::before {
+    content: 'Today\'s Nutrition';
+    display: block;
+    font-family: var(--font-serif);
+    font-size: var(--text-xl);
+    color: var(--color-text-primary);
+    margin-bottom: var(--space-5);
+    flex-shrink: 0;
+  }
+
+  /* Meals on Mac: add padding */
+  .log-meals {
+    padding: 0 24px;
+  }
+
+  .log-sync-wrap {
+    padding: var(--space-4) 24px var(--space-6);
+  }
+
+  /* Mobile summary strip hidden on Mac (shown in right panel instead) */
+  .log-body__left .log-summary-strip {
+    display: none;
+  }
+}

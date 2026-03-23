@@ -36,7 +36,7 @@ function renderLogShell(date) {
 
   view.innerHTML = `
     <div class="log-page">
-      <header class="page-header">
+      <header class="page-header log-page__header">
         <button class="log-nav-btn" id="log-prev" aria-label="Previous day">‹</button>
         <div class="log-date-wrap">
           <h2 class="page-header__title" id="log-date-label">${date}</h2>
@@ -44,12 +44,22 @@ function renderLogShell(date) {
         <button class="log-nav-btn" id="log-next" aria-label="Next day"
           ${isToday ? 'disabled' : ''}>›</button>
       </header>
-      <div id="log-summary-strip" class="log-summary-strip"></div>
-      <div id="log-meals"         class="log-meals"></div>
-      <div class="log-sync-wrap">
-        <button id="log-sync-btn" class="btn btn--ghost log-sync-btn">
-          ${CONFIG.labels.syncButton}
-        </button>
+
+      <div class="log-body">
+        <!-- Left: meal sections -->
+        <div class="log-body__left">
+          <div id="log-meals" class="log-meals"></div>
+          <div class="log-sync-wrap">
+            <button id="log-sync-btn" class="btn btn--ghost log-sync-btn">
+              ${CONFIG.labels.syncButton}
+            </button>
+          </div>
+        </div>
+
+        <!-- Right: summary panel (Mac only) -->
+        <aside class="log-body__right">
+          <div id="log-summary-strip" class="log-summary-strip"></div>
+        </aside>
       </div>
     </div>
   `;
