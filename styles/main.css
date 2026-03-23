@@ -1729,3 +1729,134 @@ div.entry-row__right button.entry-row__delete-btn:hover {
 
 /* ── 6. Bottom sheet inputs — no zoom ───────────────────────── */
 .sheet-input, .sheet-select { font-size: 16px !important; }
+/* ============================================================
+   patch4.css — append LAST to main.css
+   Fixes: delete button visibility, mobile date row,
+          remaining negative, processing state, 5-chip strip
+============================================================ */
+
+/* ── 1. Delete button — more visible on mobile ───────────────── */
+/* Override ALL previous rules */
+.entry-row__delete-btn,
+div.entry-row__right button.entry-row__delete-btn {
+  color: #8A8A82 !important;    /* darker grey, visible on white */
+  opacity: 0.7 !important;
+  font-size: 13px !important;
+  width: 26px !important;
+  height: 26px !important;
+}
+.entry-row__delete-btn:hover,
+div.entry-row__right button.entry-row__delete-btn:hover {
+  color: #555 !important;
+  opacity: 1 !important;
+  background: #f0ede8 !important;
+}
+@media (max-width: 767px) {
+  .entry-row__delete-btn,
+  div.entry-row__right button.entry-row__delete-btn {
+    color: #6B6B65 !important;  /* even darker on iPhone */
+    opacity: 0.9 !important;
+    font-size: 14px !important;
+    width: 30px !important;
+    height: 30px !important;
+  }
+}
+
+/* ── 2. Mobile date row — between title and search ───────────── */
+.log-mobile-date-row {
+  text-align: center;
+  padding: 2px 12px 8px;
+}
+.log-mobile-date-label {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--color-text-secondary);
+  font-family: var(--font-sans);
+  letter-spacing: .02em;
+}
+
+/* ── 3. Remaining today — allow negative, show red ──────────── */
+.sidebar-remaining-card--negative .sidebar-remaining-card__value {
+  color: var(--color-error, #C0392B) !important;
+  font-weight: 500;
+}
+.sidebar-remaining-card--negative {
+  background: #fff5f5;
+  border: .5px solid #fcc;
+}
+
+/* ── 4. Auth processing state ────────────────────────────────── */
+.auth-processing {
+  text-align: center;
+  font-size: 13px;
+  color: var(--color-accent);
+  font-family: var(--font-sans);
+  margin-top: 8px;
+  animation: auth-pulse 1s ease-in-out infinite;
+}
+@keyframes auth-pulse {
+  0%,100% { opacity: 1; }
+  50%      { opacity: 0.4; }
+}
+
+/* ── 5. iPhone macro strip — 5 chips, smaller to fit ─────────── */
+@media (max-width: 767px) {
+  .iphone-macro-strip {
+    grid-template-columns: repeat(5, 1fr) !important;
+    gap: 4px !important;
+    padding: 0 10px 6px !important;
+  }
+  .iphone-macro-chip {
+    padding: 6px 4px !important;
+    min-width: 0 !important;
+  }
+  .iphone-macro-chip__val {
+    font-size: 9px !important;
+  }
+  .chip-target {
+    font-size: 8px !important;
+  }
+  .iphone-macro-chip__emoji {
+    font-size: 13px !important;
+  }
+}
+
+/* ── 6. Save Summary processing ──────────────────────────────── */
+.log-sync-btn:disabled,
+.sidebar-save-btn:disabled {
+  opacity: 0.65 !important;
+  cursor: not-allowed !important;
+}
+
+/* ── 7. Entry amount input — no zoom on iOS ──────────────────── */
+.entry-amount-input {
+  font-size: 16px !important;  /* prevents iOS auto-zoom */
+}
+
+/* ── 8. Live nutrition update flash ──────────────────────────── */
+.entry-row__macros {
+  transition: opacity 0.1s;
+}
+
+/* ── 9. Sidebar remaining grid — show all 4 ─────────────────── */
+.sidebar-remaining-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+.sidebar-remaining-card {
+  background: var(--color-bg-page);
+  border-radius: 8px;
+  padding: 8px 10px;
+  border: .5px solid var(--color-border);
+}
+.sidebar-remaining-card__label {
+  font-size: 11px;
+  color: var(--color-text-secondary);
+  margin-bottom: 2px;
+}
+.sidebar-remaining-card__value {
+  font-size: 15px;
+  font-weight: 500;
+  color: var(--color-text-primary);
+}
