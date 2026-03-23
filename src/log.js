@@ -325,9 +325,33 @@ function bindSwipeDelete(row) {
 async function handleDelete(rowIndex) {
   try {
     await deleteLogEntry(rowIndex);
+
+    // Remove the entry row directly from DOM — no full page reload
+    const rowEl = document.querySelector(`.entry-row[data-row-index="${rowIndex}"]`);
+    if (rowEl) {
+      rowEl.style.transition = 'opacity 0.2s, max-height 0.2s';
+      rowEl.style.opacity    = '0';
+      rowEl.style.maxHeight  = '0';
+      rowEl.style.overflow   = 'hidden';
+      setTimeout(() => rowEl.remove(), 220);
+    }
+
+    // Invalidate cache so next visit re-fetches
     const date = store.state.currentDate || today();
     invalidateLogCache(date);
-    await loadAndRender(date);
+
+    // Update summary strip with fresh data after short delay
+    setTimeout(async () => {
+      if (store.state.dailyLog[date] === undefined) {
+        store.state.dailyLog[date] = await getDailyLog(date);
+      } else {
+        // Remove entry from local cache too
+        store.state.dailyLog[date] = store.state.dailyLog[date]
+          .filter(e => e.rowIndex !== rowIndex);
+      }
+      renderSummaryStrip(store.state.dailyLog[date]);
+    }, 250);
+
     showToast('Entry deleted', 'success');
     console.log(`[log] handleDelete → row=${rowIndex}`);
   } catch (err) {

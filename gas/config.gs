@@ -72,17 +72,22 @@ const CONFIG = {
       createdDatetime: 13,  // N
     },
 
-    // DailySummary
+    // DailySummary — confirmed from screenshot
+    // Row 1: section headers (CALORIES, PROTEIN, CARBS, FAT, FIBRE...)
+    // Row 2: sub-headers (Target, kcal, Target, g, ...)
+    // B=target_cal, C=actual_cal, D=target_pro, E=actual_pro, etc.
     dailySummary: {
-      date:      0,   // A
-      calories:  1,   // B
-      protein:   2,   // C
-      carbs:     3,   // D
-      fat:       4,   // E
-      fibre:     5,   // F
-      sodium:    6,   // G
-      potassium: 7,   // H
-      syncedAt:  8,   // I
+      date:           0,   // A
+      calorieTarget:  1,   // B
+      calories:       2,   // C
+      proteinTarget:  3,   // D
+      protein:        4,   // E
+      carbsTarget:    5,   // F
+      carbs:          6,   // G
+      fatTarget:      7,   // H
+      fat:            8,   // I
+      fibreTarget:    9,   // J
+      fibre:          10,  // K
     },
 
     // Favourites

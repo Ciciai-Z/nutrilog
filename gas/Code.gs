@@ -122,7 +122,8 @@ function loadNutritionDB(sheet, q) {
     if (!r[C.no]) continue;
     if (q && !String(r[C.name] || '').toLowerCase().includes(q)) continue;
     out.push(buildFoodRecord(r, C));
-    if (out.length >= CONFIG.search.maxResults) break;
+    // Only apply maxResults limit when filtering (not on full load)
+    if (q && out.length >= CONFIG.search.maxResults) break;
   }
   return out;
 }
@@ -336,43 +337,49 @@ function syncDailySummary(params) {
   const date = (payload.date || '').trim();
   if (!date) return { ok: false, error: 'Missing date' };
 
-  // Sum nutrients from DailyLog for this date
+  // Read targets from Settings
+  const settingsData = getSheet(CONFIG.sheets.settings).getDataRange().getValues();
+  const settingsMap  = {};
+  for (const row of settingsData) { if (row[0]) settingsMap[row[0]] = Number(row[1]) || 0; }
+
+  // Sum actual nutrients from DailyLog for this date
   const logSh   = getSheet(CONFIG.sheets.dailyLog);
   const logRows = logSh.getDataRange().getValues();
   const C       = CONFIG.columns.dailyLog;
   const norm    = s => String(s).trim().replace(/,\s+/, ',');
-  const totals  = { calories: 0, protein: 0, carbs: 0, fat: 0, fibre: 0, sodium: 0, potassium: 0 };
+  const totals  = { calories: 0, protein: 0, carbs: 0, fat: 0, fibre: 0 };
 
   for (let i = 1; i < logRows.length; i++) {
     const r = logRows[i];
     if (!r[C.date] || norm(r[C.date]) !== norm(date)) continue;
-    totals.calories  += Number(r[C.calories])  || 0;
-    totals.protein   += Number(r[C.protein])   || 0;
-    totals.carbs     += Number(r[C.carbs])     || 0;
-    totals.fat       += Number(r[C.fat])       || 0;
-    totals.fibre     += Number(r[C.fibre])     || 0;
-    totals.sodium    += Number(r[C.sodium])    || 0;
-    totals.potassium += Number(r[C.potassium]) || 0;
+    totals.calories += Number(r[C.calories]) || 0;
+    totals.protein  += Number(r[C.protein])  || 0;
+    totals.carbs    += Number(r[C.carbs])    || 0;
+    totals.fat      += Number(r[C.fat])      || 0;
+    totals.fibre    += Number(r[C.fibre])    || 0;
   }
 
   const sumSh   = getSheet(CONFIG.sheets.dailySummary);
   const sumRows = sumSh.getDataRange().getValues();
   const CS      = CONFIG.columns.dailySummary;
-  const now     = Utilities.formatDate(new Date(), Session.getScriptTimeZone(), "d/M/yy H:mm");
 
-  const newRow = [];
-  newRow[CS.date]      = date;
-  newRow[CS.calories]  = Math.round(totals.calories);
-  newRow[CS.protein]   = Math.round(totals.protein   * 10) / 10;
-  newRow[CS.carbs]     = Math.round(totals.carbs     * 10) / 10;
-  newRow[CS.fat]       = Math.round(totals.fat       * 10) / 10;
-  newRow[CS.fibre]     = Math.round(totals.fibre     * 10) / 10;
-  newRow[CS.sodium]    = Math.round(totals.sodium);
-  newRow[CS.potassium] = Math.round(totals.potassium);
-  newRow[CS.syncedAt]  = now;
+  // Build row with both target and actual values
+  const maxCol = Math.max(...Object.values(CS)) + 1;
+  const newRow = new Array(maxCol).fill('');
+  newRow[CS.date]          = date;
+  newRow[CS.calorieTarget] = settingsMap['calorie_target'] || '';
+  newRow[CS.calories]      = Math.round(totals.calories);
+  newRow[CS.proteinTarget] = settingsMap['protein_target'] || '';
+  newRow[CS.protein]       = Math.round(totals.protein  * 10) / 10;
+  newRow[CS.carbsTarget]   = settingsMap['carbs_target']  || '';
+  newRow[CS.carbs]         = Math.round(totals.carbs    * 10) / 10;
+  newRow[CS.fatTarget]     = settingsMap['fat_target']    || '';
+  newRow[CS.fat]           = Math.round(totals.fat      * 10) / 10;
+  newRow[CS.fibreTarget]   = settingsMap['fibre_target']  || '';
+  newRow[CS.fibre]         = Math.round(totals.fibre    * 10) / 10;
 
-  // Overwrite existing row for this date, or append
-  for (let i = 1; i < sumRows.length; i++) {
+  // Data starts at row 3 (rows 1-2 are headers)
+  for (let i = 2; i < sumRows.length; i++) {
     if (norm(String(sumRows[i][CS.date])) === norm(date)) {
       sumSh.getRange(i + 1, 1, 1, newRow.length).setValues([newRow]);
       return { ok: true, data: { updated: true } };
