@@ -59,7 +59,14 @@ function verifyToken(token) {
 // ── B1: Auth ─────────────────────────────────────────────────
 
 function verifyPin(params) {
-  const hash = params.hash || '';
+  let hash = '';
+  try {
+    const payload = JSON.parse(decodeURIComponent(params.payload || '{}'));
+    hash = payload.hash || payload.pinHash || '';
+  } catch (e) {
+    return { ok: false, error: 'Invalid payload' };
+  }
+  if (!hash) return { ok: false, error: 'Missing hash' };
   const sh   = getSheet(CONFIG.sheets.settings);
   const data = sh.getDataRange().getValues();
 
@@ -249,7 +256,13 @@ function toggleFavourite(params) {
   const token  = params.token || '';
   if (!verifyToken(token)) return { ok: false, error: 'Unauthorized' };
 
-  const foodNo = Number(params.foodNo || 0);
+  let foodNo = 0;
+  try {
+    const payload = JSON.parse(decodeURIComponent(params.payload || '{}'));
+    foodNo = Number(payload.foodNo || 0);
+  } catch (e) {
+    return { ok: false, error: 'Invalid payload' };
+  }
   if (!foodNo) return { ok: false, error: 'Missing foodNo' };
 
   const sh   = getSheet(CONFIG.sheets.favourites);
