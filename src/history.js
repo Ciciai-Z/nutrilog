@@ -20,8 +20,10 @@ export async function initHistory() {
       </div>
     </div>`;
   try {
+    if (store.state.history) { renderHistory(store.state.history); return; }
     const { getHistory } = await import('./api.js');
     const rows = await getHistory();
+    store.state.history = rows;
     renderHistory(rows);
   } catch (err) {
     console.error('[history] load error:', err);
@@ -97,10 +99,10 @@ function renderDayCard(r) {
         ${badge ? `<span class="hist-badge ${badgeCls}">${badge}</span>` : ''}
       </div>
       <div class="hist-card__macros">
-        <div class="hist-macro"><span class="hist-macro__val">${cal.toLocaleString()}</span><span class="hist-macro__label">kcal</span></div>
-        <div class="hist-macro"><span class="hist-macro__val">${pro.toFixed(1)}g</span><span class="hist-macro__label">protein</span></div>
-        <div class="hist-macro"><span class="hist-macro__val">${carbs.toFixed(1)}g</span><span class="hist-macro__label">carbs</span></div>
-        <div class="hist-macro"><span class="hist-macro__val">${fat.toFixed(1)}g</span><span class="hist-macro__label">fat</span></div>
+        <div class="hist-macro"><span class="hist-macro__icon">🔥</span><span class="hist-macro__val">${cal.toLocaleString()}</span><span class="hist-macro__label">kcal</span></div>
+        <div class="hist-macro"><span class="hist-macro__icon">💪</span><span class="hist-macro__val">${pro.toFixed(1)}g</span><span class="hist-macro__label">protein</span></div>
+        <div class="hist-macro"><span class="hist-macro__icon">🌾</span><span class="hist-macro__val">${carbs.toFixed(1)}g</span><span class="hist-macro__label">carbs</span></div>
+        <div class="hist-macro"><span class="hist-macro__icon">🥑</span><span class="hist-macro__val">${fat.toFixed(1)}g</span><span class="hist-macro__label">fat</span></div>
       </div>
       <div class="hist-bar"><div class="hist-bar__fill ${barCls}" style="width:${pct}%"></div></div>
     </div>`;

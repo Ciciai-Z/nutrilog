@@ -28,8 +28,10 @@ export async function initMeals(macMode = false) {
 }
 
 // ── Load & render ─────────────────────────────────────────────
-async function loadMeals() {
+async function loadMeals(force = false) {
   try {
+    // Use cache if available; force=true skips cache
+    if (store.state.meals && !force) { renderMealsList(store.state.meals); return; }
     const { getMeals } = await import('./api.js');
     const rows = await getMeals();
     store.state.meals = rows;
@@ -86,10 +88,10 @@ function renderMealCard(group) {
         <span class="meals-card__cal">${Math.round(totCal)} kcal</span>
       </div>
       <div class="meals-card__macros">
-        <span>P <strong>${totPro.toFixed(1)}g</strong></span>
-        <span>C <strong>${totC.toFixed(1)}g</strong></span>
-        <span>F <strong>${totF.toFixed(1)}g</strong></span>
-        <span>Fi <strong>${totFi.toFixed(1)}g</strong></span>
+        <span>💪 P <strong>${totPro.toFixed(1)}g</strong></span>
+        <span>🌾 C <strong>${totC.toFixed(1)}g</strong></span>
+        <span>🥑 F <strong>${totF.toFixed(1)}g</strong></span>
+        <span>🌿 Fi <strong>${totFi.toFixed(1)}g</strong></span>
       </div>
       <p class="meals-card__foods">${escHtml(foodList)}</p>
       <div class="meals-card__actions">
@@ -230,8 +232,9 @@ function openCreateMealModal() {
         fibre:    Math.round((food.fibre||0)    * amount / (food.amount||100) * 10) / 10,
       }))});
       showToast(`${name} saved ✓`, 'success');
+      store.state.meals = null;
       modal.remove();
-      await loadMeals();
+      await loadMeals(true);
     } catch (err) {
       console.error('[meals] saveMeal:', err);
       showToast('Failed to save meal', 'error');
@@ -333,8 +336,9 @@ async function handleDeleteMeal(mealNo, btn) {
   try {
     const { deleteMeal } = await import('./api.js');
     await deleteMeal(mealNo);
+    store.state.meals = null;
     showToast('Meal deleted', 'success');
-    await loadMeals();
+    await loadMeals(true);
   } catch (err) {
     console.error('[meals] delete:', err);
     showToast('Failed to delete', 'error');

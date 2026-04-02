@@ -159,7 +159,7 @@ export async function navigateTo(tab) {
   const wasSidebarTab= isMac && ['today','favourites','meals'].includes(currentTab);
 
   if (tab === currentTab && isSidebarTab && document.getElementById('mac-left')) return;
-  if (tab === currentTab && !isSidebarTab && tab !== 'settings') {
+  if (tab === currentTab && !isSidebarTab && tab !== 'settings' && tab !== 'today') {
     document.querySelectorAll('.tab-bar__item[data-tab]').forEach(b=>b.classList.toggle('tab-bar__item--active',b.dataset.tab===tab));
     return;
   }

@@ -2,7 +2,7 @@
    tokens.css
    Updated: Session 4 — hint colour, meal colours, DM Serif italic
 ============================================================ */
-@import url('https://fonts.googleapis.com/css2?family=DM+Sans:ital,wght@0,400;0,500;1,400&family=DM+Serif+Display:ital@0;1&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=DM+Sans:ital,wght@0,400;0,500;1,400&family=DM+Serif+Display:ital@0;1&family=Montserrat:ital,wght@0,700;1,700&family=Open+Sans:wght@400;500&display=swap');
 
 :root {
   /* ── Core colours ── */
@@ -51,6 +51,8 @@
   /* ── Fonts ── */
   --font-sans:  'DM Sans', -apple-system, sans-serif;
   --font-serif: 'DM Serif Display', Georgia, serif;
+  --font-title: 'Montserrat', -apple-system, sans-serif;
+  --font-body:  'Open Sans', -apple-system, sans-serif;
 
   /* ── Type scale ── */
   --text-xs:   11px;
