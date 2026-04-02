@@ -133,7 +133,7 @@ function renderLogShellMac(date) {
             </div>
             <div class="mac-add-nutrition-preview" id="mac-nutrition-preview" style="display:none"></div>
             <div class="mac-quick-add-footer" id="mac-quick-add-footer">
-              <button class="mac-quick-add-link" id="mac-quick-add-btn">⚡ Quick Add — enter nutrition directly</button>
+              <button class="mac-quick-add-link" id="mac-quick-add-btn"><span style="font-size:13px">⚡</span> Quick Add — enter nutrition directly</button>
             </div>
           </div>
         </div>
@@ -611,7 +611,21 @@ function handleAmountEdit(btn) {
 
 async function handleDelete(rowIndex) {
   const date=store.state.currentDate||today();
-  if(store.state.dailyLog[date]){store.state.dailyLog[date]=store.state.dailyLog[date].filter(e=>e.rowIndex!==rowIndex);}
+  const entries=store.state.dailyLog[date]||[];
+  // Find the entry before removing, so we can clean up store.state.favourites if it's a Quick Add
+  const deleted=entries.find(e=>e.rowIndex===rowIndex);
+  if(store.state.dailyLog[date]){store.state.dailyLog[date]=entries.filter(e=>e.rowIndex!==rowIndex);}
+
+  // If it was a Quick Add food (foodNo >= 50001), remove from store.state.favourites
+  // so Favourites page reflects the deletion immediately
+  if(deleted?.foodNo && deleted.foodNo>=50001){
+    const fs=store.state.favourites;
+    if(fs instanceof Set) fs.delete(deleted.foodNo);
+    else if(Array.isArray(fs)) store.state.favourites=fs.filter(n=>n!==deleted.foodNo);
+    // Also remove from store.state.foods so it won't appear in search
+    if(store.state.foods) store.state.foods=store.state.foods.filter(f=>f.no!==deleted.foodNo);
+  }
+
   const rowEl=document.querySelector(`.entry-row[data-row-index="${rowIndex}"]`);
   if(rowEl){
     const section=rowEl.closest('.meal-section');
