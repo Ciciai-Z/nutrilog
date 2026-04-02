@@ -1,7 +1,8 @@
 // ============================================================
 // log.js
-// Fixed: amount edit → processing until meal header updates,
-//        Mac date nav arrows in header, font sizes
+// Fixed: Bug1 — setPageBusy during amount edit + Save Summary
+//        Bug2 — iPhone date label tappable (date picker)
+//        Bug3 — amount update no re-fetch (local store update)
 // ============================================================
 import { CONFIG } from '../config.js';
 import { getDailyLog, deleteLogEntry, updateLogEntry, syncDailySummary, addLogEntry, toggleFavourite } from './api.js';
@@ -57,6 +58,7 @@ function renderLogShellMobile(date) {
   document.getElementById('log-sync-btn-mobile')?.addEventListener('click', handleSync);
   bindTitleInput('log-title-input');
   bindMobileSearch('log-search-input');
+  bindMobileDatePicker('log-mobile-date');  // Bug2 fix
 }
 
 function formatMobileDate(dateStr) {
@@ -180,6 +182,40 @@ function bindMobileSearch(id) {
     input.blur();
     try{const{openSearchSheet}=await import('./search.js');openSearchSheet();}
     catch(err){console.error('[log] openSearchSheet:',err);}
+  });
+}
+
+// ── Bug2 fix: iPhone date label → tappable date picker ────────
+function bindMobileDatePicker(id) {
+  const row = document.getElementById(id); if (!row) return;
+  row.style.cursor = 'pointer';
+  // Hidden date input overlaid
+  const inp = document.createElement('input');
+  inp.type = 'date';
+  inp.style.cssText = 'position:absolute;opacity:0;width:1px;height:1px;pointer-events:none';
+  row.style.position = 'relative';
+  row.appendChild(inp);
+
+  row.addEventListener('click', () => {
+    const cur = store.state.currentDate || today();
+    try {
+      const parts = cur.replace(/^[^,]+,/, '').split('/');
+      const d = parseInt(parts[0]), m = parseInt(parts[1]), y = 2000 + parseInt(parts[2]);
+      inp.value = `${y}-${String(m).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+    } catch {}
+    try { inp.showPicker(); } catch { inp.click(); }
+  });
+
+  inp.addEventListener('change', async () => {
+    if (!inp.value) return;
+    const [y, m, d] = inp.value.split('-').map(Number);
+    const dt = new Date(y, m - 1, d);
+    const DOW = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+    const newDate = `${DOW[dt.getDay()]},${d}/${m}/${String(y).slice(2)}`;
+    store.setCurrentDate(newDate);
+    const label = row.querySelector('.log-mobile-date-label');
+    if (label) label.textContent = formatMobileDate(newDate);
+    await loadAndRender(newDate);
   });
 }
 
@@ -451,7 +487,7 @@ async function handleToggleFav(btn) {
   catch(err){if(fs instanceof Set){wasFav?fs.add(foodNo):fs.delete(foodNo);}btn.classList.toggle('entry-row__star-btn--active',wasFav);console.error('[log] toggleFav:',err);}
 }
 
-// ── Amount edit — processing until Meal Header updates ─────────
+// ── Amount edit — Bug1+Bug3 fix ────────────────────────────────
 function handleAmountEdit(btn) {
   if (btn.querySelector('input')) return;
   const rowIndex  = Number(btn.dataset.rowIndex);
@@ -490,23 +526,38 @@ function handleAmountEdit(btn) {
       btn.textContent = `${oldAmt}${unit}`;
       return;
     }
-    // ── Processing: lock the entire entry row ──────────────────
+    // Bug1: lock entire page during save
     btn.textContent = `${newAmt}${unit} ⏳`;
     btn.disabled = true;
-    // Disable star + delete in this row too
-    const star   = row?.querySelector('.entry-row__star-btn');
-    const del    = row?.querySelector('.entry-row__delete-btn');
+    const star = row?.querySelector('.entry-row__star-btn');
+    const del  = row?.querySelector('.entry-row__delete-btn');
     if (star) star.disabled = true;
     if (del)  del.disabled  = true;
-    // Dim the section header to indicate it's stale
     if (section) section.style.opacity = '0.6';
+    setPageBusy(true);  // Bug1: lock all other meal sections
 
     try {
       await updateLogEntry(rowIndex, newAmt);
       const date = store.state.currentDate || today();
+
+      // Bug3: update store in-memory, no re-fetch
+      const entries = store.state.dailyLog[date] || [];
+      const idx = entries.findIndex(e => e.rowIndex === rowIndex);
+      if (idx !== -1) {
+        const e = entries[idx];
+        const ratio = newAmt / (e.amount || 1);
+        entries[idx] = { ...e, amount: newAmt,
+          calories:  Math.round((e.calories  || 0) * ratio),
+          protein:   r1((e.protein  || 0) * ratio),
+          carbs:     r1((e.carbs    || 0) * ratio),
+          fat:       r1((e.fat      || 0) * ratio),
+          fibre:     r1((e.fibre    || 0) * ratio),
+          sodium:    Math.round((e.sodium    || 0) * ratio),
+          potassium: Math.round((e.potassium || 0) * ratio),
+        };
+      }
       invalidateLogCache(date);
-      store.state.dailyLog[date] = await getDailyLog(date);
-      // Re-render everything — section header will update
+      // Re-render from updated store — no network round-trip
       renderLog(date, store.state.dailyLog[date]);
       // renderLog replaces DOM, so no need to restore manually
     } catch (err) {
@@ -518,6 +569,8 @@ function handleAmountEdit(btn) {
       if (star) star.disabled = false;
       if (del)  del.disabled  = false;
       if (section) section.style.opacity = '';
+    } finally {
+      setPageBusy(false);  // Bug1: always unlock
     }
   };
 
@@ -630,13 +683,26 @@ async function moveEntry(rowIndex,targetMeal) {
   }catch(err){console.error('[log] moveEntry:',err);showToast('Failed to move','error');}
 }
 
+// ── Bug1 fix: Save Summary locks page ─────────────────────────
 async function handleSync() {
   const date=store.state.currentDate||today();
   const btns=['log-sync-btn-mobile','sidebar-save-btn'].map(id=>document.getElementById(id)).filter(Boolean);
   btns.forEach(b=>{b.disabled=true;b.textContent='Saving…';b.style.opacity='0.7';});
+  setPageBusy(true);
   try{await syncDailySummary(date);showToast('Saved to DailySummary ✓','success');}
   catch(err){console.error('[log] handleSync:',err);showToast('Save failed — try again','error');}
-  finally{btns.forEach(b=>{b.disabled=false;b.textContent='Save Summary';b.style.opacity='';});}
+  finally{
+    btns.forEach(b=>{b.disabled=false;b.textContent='Save Summary';b.style.opacity='';});
+    setPageBusy(false);
+  }
+}
+
+// ── Bug1 helper: lock/unlock log-meals interactions ────────────
+function setPageBusy(busy) {
+  const meals = document.getElementById('log-meals');
+  if (!meals) return;
+  meals.style.pointerEvents = busy ? 'none' : '';
+  meals.style.opacity       = busy ? '0.55' : '';
 }
 
 function showEmptyState(){
