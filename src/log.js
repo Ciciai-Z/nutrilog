@@ -1,6 +1,7 @@
 // ============================================================
 // log.js
-// Fixed: Bug1 — setPageBusy during amount edit + Save Summary
+// Fixed: Bug1 — overlay-based page busy (survives DOM rebuild)
+//        Bug1b — global flag prevents concurrent amount edits
 //        Bug2 — iPhone date label tappable (date picker)
 //        Bug3 — amount update no re-fetch (local store update)
 // ============================================================
@@ -9,6 +10,9 @@ import { getDailyLog, deleteLogEntry, updateLogEntry, syncDailySummary, addLogEn
 import { store } from './store.js';
 import { showToast } from './ui.js';
 import { today, formatDate, parseDate } from './utils.js';
+
+// Global flag — prevents opening a second amount edit while one is in progress
+let _amountEditActive = false;
 
 const MEAL_META = {
   Breakfast: { mod:'breakfast', emoji:'☀️' },
@@ -487,15 +491,18 @@ async function handleToggleFav(btn) {
   catch(err){if(fs instanceof Set){wasFav?fs.add(foodNo):fs.delete(foodNo);}btn.classList.toggle('entry-row__star-btn--active',wasFav);console.error('[log] toggleFav:',err);}
 }
 
-// ── Amount edit — Bug1+Bug3 fix ────────────────────────────────
+// ── Amount edit — Bug1+Bug1b+Bug3 fix ─────────────────────────
 function handleAmountEdit(btn) {
+  // Bug1b: prevent concurrent edits across all rows
+  if (_amountEditActive) return;
   if (btn.querySelector('input')) return;
-  const rowIndex  = Number(btn.dataset.rowIndex);
-  const oldAmt    = Number(btn.dataset.amount);
-  const unit      = btn.dataset.unit;
-  const row       = btn.closest('.entry-row');
-  const baseAmt   = Number(row?.dataset.baseAmount) || oldAmt;
-  const section   = row?.closest('.meal-section');
+
+  _amountEditActive = true;
+  const rowIndex = Number(btn.dataset.rowIndex);
+  const oldAmt   = Number(btn.dataset.amount);
+  const unit     = btn.dataset.unit;
+  const row      = btn.closest('.entry-row');
+  const baseAmt  = Number(row?.dataset.baseAmount) || oldAmt;
 
   // Replace badge with input
   btn.innerHTML = `<input class="entry-amount-input" type="number" value="${oldAmt}"
@@ -524,17 +531,12 @@ function handleAmountEdit(btn) {
     const newAmt = parseFloat(input.value);
     if (!newAmt || newAmt <= 0 || newAmt === oldAmt) {
       btn.textContent = `${oldAmt}${unit}`;
+      _amountEditActive = false;
       return;
     }
-    // Bug1: lock entire page during save
+    // Bug1: overlay blocks all interaction during save (survives DOM rebuild)
+    setPageBusy(true);
     btn.textContent = `${newAmt}${unit} ⏳`;
-    btn.disabled = true;
-    const star = row?.querySelector('.entry-row__star-btn');
-    const del  = row?.querySelector('.entry-row__delete-btn');
-    if (star) star.disabled = true;
-    if (del)  del.disabled  = true;
-    if (section) section.style.opacity = '0.6';
-    setPageBusy(true);  // Bug1: lock all other meal sections
 
     try {
       await updateLogEntry(rowIndex, newAmt);
@@ -557,27 +559,24 @@ function handleAmountEdit(btn) {
         };
       }
       invalidateLogCache(date);
-      // Re-render from updated store — no network round-trip
       renderLog(date, store.state.dailyLog[date]);
-      // renderLog replaces DOM, so no need to restore manually
     } catch (err) {
       console.error('[log] handleUpdate:', err);
       showToast('Failed to update — please try again', 'error');
-      // Restore on error
       btn.textContent = `${oldAmt}${unit}`;
-      btn.disabled = false;
-      if (star) star.disabled = false;
-      if (del)  del.disabled  = false;
-      if (section) section.style.opacity = '';
     } finally {
-      setPageBusy(false);  // Bug1: always unlock
+      setPageBusy(false);
+      _amountEditActive = false;
     }
   };
 
   input.addEventListener('blur', confirm);
   input.addEventListener('keydown', e => {
     if (e.key === 'Enter') { e.preventDefault(); input.blur(); }
-    if (e.key === 'Escape') { btn.textContent = `${oldAmt}${unit}`; }
+    if (e.key === 'Escape') {
+      btn.textContent = `${oldAmt}${unit}`;
+      _amountEditActive = false;
+    }
   });
 }
 
@@ -683,7 +682,7 @@ async function moveEntry(rowIndex,targetMeal) {
   }catch(err){console.error('[log] moveEntry:',err);showToast('Failed to move','error');}
 }
 
-// ── Bug1 fix: Save Summary locks page ─────────────────────────
+// ── Bug1 fix: Save Summary locks page with overlay ─────────────
 async function handleSync() {
   const date=store.state.currentDate||today();
   const btns=['log-sync-btn-mobile','sidebar-save-btn'].map(id=>document.getElementById(id)).filter(Boolean);
@@ -697,12 +696,22 @@ async function handleSync() {
   }
 }
 
-// ── Bug1 helper: lock/unlock log-meals interactions ────────────
+// ── Bug1 helper: overlay that survives DOM rebuild ─────────────
 function setPageBusy(busy) {
-  const meals = document.getElementById('log-meals');
-  if (!meals) return;
-  meals.style.pointerEvents = busy ? 'none' : '';
-  meals.style.opacity       = busy ? '0.55' : '';
+  const OVERLAY_ID = 'log-busy-overlay';
+  if (busy) {
+    if (document.getElementById(OVERLAY_ID)) return;
+    const overlay = document.createElement('div');
+    overlay.id = OVERLAY_ID;
+    overlay.style.cssText = [
+      'position:fixed', 'inset:0', 'z-index:8888',
+      'background:rgba(242,239,233,0.45)',
+      'cursor:wait', 'pointer-events:all',
+    ].join(';');
+    document.body.appendChild(overlay);
+  } else {
+    document.getElementById(OVERLAY_ID)?.remove();
+  }
 }
 
 function showEmptyState(){
