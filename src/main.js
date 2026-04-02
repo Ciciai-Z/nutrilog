@@ -224,9 +224,17 @@ async function onLogin() {
   try { const s=await getSettings(); store.setSettings(s); console.log('[main] settings loaded'); }
   catch(ex){console.error('[main] settings failed:',ex.message);}
   renderAppShell();
+  // Preload foods, favourites, and today's log in parallel
+  // so initLog finds everything already in store and skips waiting
   Promise.all([
     import('./search.js').then(m=>m.ensureFoodsLoaded()),
     import('./search.js').then(m=>m.ensureFavouritesLoaded?.()),
+    import('./api.js').then(({ getDailyLog }) =>
+      getDailyLog(today()).then(entries => {
+        if (!store.state.dailyLog) store.state.dailyLog = {};
+        store.state.dailyLog[today()] = entries;
+      })
+    ),
   ]).catch(err=>console.warn('[main] preload:',err.message));
 }
 

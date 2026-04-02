@@ -27,8 +27,11 @@ export async function initLog(macMode = false) {
   const date = store.state.currentDate || today();
   if (macMode) renderLogShellMac(date);
   else         renderLogShellMobile(date);
-  try { const { ensureFavouritesLoaded } = await import('./search.js'); await ensureFavouritesLoaded(); } catch {}
-  await loadAndRender(date);
+  // Run favourites load + daily log fetch in parallel to halve wait time
+  await Promise.all([
+    import('./search.js').then(m => m.ensureFavouritesLoaded()).catch(() => {}),
+    loadAndRender(date),
+  ]);
   console.log('[log] initLog → ready');
 }
 
@@ -189,26 +192,34 @@ function bindMobileSearch(id) {
   });
 }
 
-// ── Bug2 fix: iPhone date label → tappable date picker ────────
+// ── Bug2 fix: iPhone date label → tappable date picker (iOS Safari) ──
 function bindMobileDatePicker(id) {
   const row = document.getElementById(id); if (!row) return;
-  row.style.cursor = 'pointer';
-  // Hidden date input overlaid
-  const inp = document.createElement('input');
-  inp.type = 'date';
-  inp.style.cssText = 'position:absolute;opacity:0;width:1px;height:1px;pointer-events:none';
   row.style.position = 'relative';
+  row.style.cursor   = 'pointer';
+
+  // Input must be visible-sized for iOS Safari to open the picker.
+  // We cover the entire row with it (opacity:0 + inset:0).
+  const inp = document.createElement('input');
+  inp.type  = 'date';
+  inp.style.cssText = [
+    'position:absolute', 'inset:0', 'width:100%', 'height:100%',
+    'opacity:0', 'cursor:pointer', 'z-index:2',
+    '-webkit-appearance:none', 'border:none', 'background:transparent',
+  ].join(';');
   row.appendChild(inp);
 
-  row.addEventListener('click', () => {
+  // Sync current date into input whenever it becomes visible
+  const syncValue = () => {
     const cur = store.state.currentDate || today();
     try {
       const parts = cur.replace(/^[^,]+,/, '').split('/');
       const d = parseInt(parts[0]), m = parseInt(parts[1]), y = 2000 + parseInt(parts[2]);
       inp.value = `${y}-${String(m).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
     } catch {}
-    try { inp.showPicker(); } catch { inp.click(); }
-  });
+  };
+  syncValue();
+  row.addEventListener('click', syncValue);
 
   inp.addEventListener('change', async () => {
     if (!inp.value) return;
@@ -219,6 +230,7 @@ function bindMobileDatePicker(id) {
     store.setCurrentDate(newDate);
     const label = row.querySelector('.log-mobile-date-label');
     if (label) label.textContent = formatMobileDate(newDate);
+    try { const m2 = await import('./main.js'); m2.notifyDateChange?.(); } catch {}
     await loadAndRender(newDate);
   });
 }
