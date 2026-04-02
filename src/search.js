@@ -133,6 +133,17 @@ export function openQuickAddSheet() {
   sheet.id = 'quick-add-sheet';
   sheet.className = 'bottom-sheet';
   const options = CONFIG.labels.mealTypes.map(t => `<option>${t}</option>`).join('');
+
+  // Helper: number field with max=3000, step=0.1, max 1 decimal
+  const numField = (id, label, required = false) => `
+    <div>
+      <label class="sheet-label">${label}${required ? ' *' : ''}</label>
+      <input id="${id}" class="sheet-input" type="number"
+        min="0" max="3000" step="0.1"
+        placeholder="${required ? 'required' : '0'}"
+        inputmode="decimal" style="font-size:16px">
+    </div>`;
+
   sheet.innerHTML = `
     <div class="bottom-sheet__backdrop"></div>
     <div class="bottom-sheet__panel">
@@ -142,42 +153,22 @@ export function openQuickAddSheet() {
       </div>
       <div class="bottom-sheet__body" style="display:flex;flex-direction:column;gap:10px">
         <div>
-          <label class="sheet-label">Name (optional)</label>
-          <input id="qa-name" class="sheet-input" type="text" placeholder="e.g. Restaurant noodles"
+          <label class="sheet-label">Name *</label>
+          <input id="qa-name" class="sheet-input" type="text"
+            placeholder="e.g. Restaurant noodles"
             autocomplete="off" style="font-size:16px">
         </div>
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
-          <div>
-            <label class="sheet-label">Calories (kcal) *</label>
-            <input id="qa-calories" class="sheet-input" type="number" min="0" step="1"
-              placeholder="e.g. 550" inputmode="decimal" style="font-size:16px">
-          </div>
-          <div>
-            <label class="sheet-label">Protein (g)</label>
-            <input id="qa-protein" class="sheet-input" type="number" min="0" step="0.1"
-              placeholder="0" inputmode="decimal" style="font-size:16px">
-          </div>
-          <div>
-            <label class="sheet-label">Carbs (g)</label>
-            <input id="qa-carbs" class="sheet-input" type="number" min="0" step="0.1"
-              placeholder="0" inputmode="decimal" style="font-size:16px">
-          </div>
-          <div>
-            <label class="sheet-label">Fat (g)</label>
-            <input id="qa-fat" class="sheet-input" type="number" min="0" step="0.1"
-              placeholder="0" inputmode="decimal" style="font-size:16px">
-          </div>
-          <div>
-            <label class="sheet-label">Fibre (g)</label>
-            <input id="qa-fibre" class="sheet-input" type="number" min="0" step="0.1"
-              placeholder="0" inputmode="decimal" style="font-size:16px">
-          </div>
+          ${numField('qa-calories','Calories (kcal)', true)}
+          ${numField('qa-protein','Protein (g)')}
+          ${numField('qa-carbs','Carbs (g)')}
+          ${numField('qa-fat','Fat (g)')}
+          ${numField('qa-fibre','Fibre (g)')}
           <div>
             <label class="sheet-label">Meal</label>
             <select id="qa-meal" class="sheet-select" style="font-size:16px">${options}</select>
           </div>
         </div>
-        <p id="qa-calc-preview" style="font-size:13px;color:var(--color-text-secondary);margin:0;font-family:var(--font-sans)"></p>
       </div>
       <div class="bottom-sheet__footer">
         <button id="qa-cancel" class="btn btn--ghost">Cancel</button>
@@ -193,36 +184,38 @@ export function openQuickAddSheet() {
   };
   sheet.querySelector('.bottom-sheet__backdrop').addEventListener('click', closeQA);
   sheet.querySelector('#qa-cancel').addEventListener('click', closeQA);
-
-  // Live calorie preview from macros
-  const updatePreview = () => {
-    const p = parseFloat(sheet.querySelector('#qa-protein').value) || 0;
-    const c = parseFloat(sheet.querySelector('#qa-carbs').value)   || 0;
-    const f = parseFloat(sheet.querySelector('#qa-fat').value)     || 0;
-    const fromMacros = Math.round(f * 9 + c * 4 + p * 4);
-    const el = sheet.querySelector('#qa-calc-preview');
-    if (el && fromMacros > 0) el.textContent = `Calculated from macros: ${fromMacros} kcal`;
-    else if (el) el.textContent = '';
-  };
-  ['#qa-protein','#qa-carbs','#qa-fat'].forEach(id =>
-    sheet.querySelector(id)?.addEventListener('input', updatePreview));
-
   sheet.querySelector('#qa-confirm').addEventListener('click', () => confirmQuickAdd(sheet, closeQA));
+
+  // Clamp to 1 decimal + max 3000 on every input
+  sheet.querySelectorAll('input[type="number"]').forEach(inp => {
+    if (inp.id === 'qa-name') return;
+    inp.addEventListener('input', () => {
+      let v = parseFloat(inp.value);
+      if (isNaN(v) || v < 0) { inp.value = ''; return; }
+      if (v > 3000) v = 3000;
+      // Round to 1 decimal place
+      inp.value = Math.round(v * 10) / 10;
+    });
+  });
 }
 
 async function confirmQuickAdd(sheet, closeQA) {
   const { today: getToday } = await import('./utils.js');
-  const name     = sheet.querySelector('#qa-name').value.trim();
-  const calories = parseFloat(sheet.querySelector('#qa-calories').value) || 0;
-  const protein  = parseFloat(sheet.querySelector('#qa-protein').value)  || 0;
-  const carbs    = parseFloat(sheet.querySelector('#qa-carbs').value)    || 0;
-  const fat      = parseFloat(sheet.querySelector('#qa-fat').value)      || 0;
-  const fibre    = parseFloat(sheet.querySelector('#qa-fibre').value)    || 0;
-  const mealType = sheet.querySelector('#qa-meal').value || 'Other';
 
-  if (!calories && !protein && !carbs && !fat) {
-    showToast('Enter at least calories or one macro', 'error'); return;
-  }
+  const name = sheet.querySelector('#qa-name').value.trim();
+  if (!name) { showToast('Name is required', 'error'); sheet.querySelector('#qa-name').focus(); return; }
+
+  const calories = parseFloat(sheet.querySelector('#qa-calories').value);
+  if (!calories || calories <= 0) { showToast('Calories is required', 'error'); sheet.querySelector('#qa-calories').focus(); return; }
+
+  // Clamp + round all values to 1 decimal
+  const clamp = v => { const n = Math.round((parseFloat(v) || 0) * 10) / 10; return Math.min(Math.max(n, 0), 3000); };
+  const calsClamped = Math.min(Math.round(calories), 3000);
+  const protein  = clamp(sheet.querySelector('#qa-protein').value);
+  const carbs    = clamp(sheet.querySelector('#qa-carbs').value);
+  const fat      = clamp(sheet.querySelector('#qa-fat').value);
+  const fibre    = clamp(sheet.querySelector('#qa-fibre').value);
+  const mealType = sheet.querySelector('#qa-meal').value || 'Other';
 
   const confirmBtn = sheet.querySelector('#qa-confirm');
   const cancelBtn  = sheet.querySelector('#qa-cancel');
@@ -232,30 +225,20 @@ async function confirmQuickAdd(sheet, closeQA) {
 
   try {
     const date = store.state.currentDate || getToday();
-    const result = await addQuickAdd({ date, mealType, name, calories, protein, carbs, fat, fibre });
-    // Add to in-memory store so log re-renders without re-fetch
+    // Pass calories as-is — GAS will store it directly (not recalculate)
+    const result = await addQuickAdd({
+      date, mealType, name,
+      calories: calsClamped, protein, carbs, fat, fibre,
+    });
     if (!store.state.dailyLog) store.state.dailyLog = {};
     if (!store.state.dailyLog[date]) store.state.dailyLog[date] = [];
-    store.state.dailyLog[date].push({
-      rowIndex:  result.rowIndex,
-      date, mealType,
-      foodNo:    result.foodNo,
-      name:      name || 'Quick Add',
-      amount:    1, unit: 'serving',
-      calories:  result.calories,
-      protein, carbs, fat, fibre,
-      sodium: 0, potassium: 0,
-    });
-    const { invalidateLogCache, renderSidebarSummary } = await import('./log.js');
-    invalidateLogCache(date);
-    const { renderLog } = await import('./log.js').then(m => ({ renderLog: m.renderLogPublic })).catch(() => ({}));
-    // Trigger log re-render via store signal
     const { getDailyLog } = await import('./api.js');
     store.state.dailyLog[date] = await getDailyLog(date);
     const logMod = await import('./log.js');
     if (logMod.refreshLog) logMod.refreshLog(date);
+    const { renderSidebarSummary } = await import('./log.js');
     renderSidebarSummary(store.state.dailyLog[date]);
-    showToast(`${name || 'Quick Add'} added ✓`, 'success');
+    showToast(`${name} added ✓`, 'success');
     closeQA();
   } catch (err) {
     console.error('[search] confirmQuickAdd:', err);

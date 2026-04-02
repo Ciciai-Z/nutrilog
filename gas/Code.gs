@@ -399,13 +399,15 @@ function addQuickAdd(params) {
   }
   const foodNo = maxNo + 1;
 
-  // 2. Calculate nutrition (always use formula, never trust caller's calories)
-  const protein  = Number(e.protein)  || 0;
-  const carbs    = Number(e.carbs)    || 0;
-  const fat      = Number(e.fat)      || 0;
-  const fibre    = Number(e.fibre)    || 0;
-  const calories = Math.round(fat * 9 + carbs * 4 + protein * 4);
-  const name     = String(e.name || 'Quick Add').trim() || 'Quick Add';
+  // 2. Store caller's calories directly (Quick Add: user enters known value)
+  const protein  = Math.round((Number(e.protein)  || 0) * 10) / 10;
+  const carbs    = Math.round((Number(e.carbs)    || 0) * 10) / 10;
+  const fat      = Math.round((Number(e.fat)      || 0) * 10) / 10;
+  const fibre    = Math.round((Number(e.fibre)    || 0) * 10) / 10;
+  const calories = Math.round(Number(e.calories)  || 0);  // stored as-is
+  const name     = String(e.name || '').trim();
+  if (!name) return { ok: false, error: 'Name is required' };
+  if (!calories || calories <= 0) return { ok: false, error: 'Calories is required' };
   const dt       = Utilities.formatDate(new Date(), Session.getScriptTimeZone(), "d/M/yy H:mm");
 
   // 3. Write CustomFoods row
