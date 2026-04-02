@@ -6,7 +6,7 @@
 //        Favourites Add → full-page overlay during processing
 // ============================================================
 import { CONFIG } from '../config.js';
-import { getFavourites, toggleFavourite, addLogEntry } from './api.js';
+import { getFavourites, toggleFavourite, addLogEntry, addQuickAdd } from './api.js';
 import { store } from './store.js';
 import { showToast } from './ui.js';
 import { calcCalories, today } from './utils.js';
@@ -70,19 +70,25 @@ export async function openSearchSheet() {
   sheet.innerHTML = `
     <div class="bottom-sheet__backdrop"></div>
     <div class="bottom-sheet__panel" style="padding:12px 14px 40px;max-height:85vh">
-      <input id="mobile-sheet-input" class="search-input"
-        type="text"
-        inputmode="search"
-        enterkeyhint="search"
-        placeholder="Search foods…"
-        autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false"
-        style="margin-bottom:8px;font-size:16px">
+      <div style="display:flex;gap:8px;margin-bottom:8px;align-items:center">
+        <input id="mobile-sheet-input" class="search-input"
+          type="text" inputmode="search" enterkeyhint="search"
+          placeholder="Search foods…"
+          autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false"
+          style="flex:1;font-size:16px;margin-bottom:0">
+        <button id="mobile-quick-add-btn" class="btn btn--ghost"
+          style="white-space:nowrap;font-size:14px;padding:8px 12px;flex-shrink:0">⚡ Quick Add</button>
+      </div>
       <div id="mobile-sheet-results" class="search-results"
         style="max-height:60vh;overflow-y:auto;padding:0"></div>
     </div>`;
   document.body.appendChild(sheet);
   requestAnimationFrame(() => sheet.classList.add('bottom-sheet--visible'));
   sheet.querySelector('.bottom-sheet__backdrop').addEventListener('click', closeMobileSheet);
+  sheet.querySelector('#mobile-quick-add-btn').addEventListener('click', () => {
+    closeMobileSheet();
+    openQuickAddSheet();
+  });
 
   const input = document.getElementById('mobile-sheet-input');
   setTimeout(() => input?.focus(), 80);
@@ -118,6 +124,147 @@ async function runSheetSearch(rawQuery) {
     row.querySelector('.result-info')?.addEventListener('click', () => { closeMobileSheet(); openAddSheet(no); });
     row.querySelector('.fav-btn')?.addEventListener('click', e => { e.stopPropagation(); handleToggleFavourite(no, row); });
   });
+}
+
+// ── B6: iPhone Quick Add sheet ────────────────────────────────
+export function openQuickAddSheet() {
+  document.getElementById('quick-add-sheet')?.remove();
+  const sheet = document.createElement('div');
+  sheet.id = 'quick-add-sheet';
+  sheet.className = 'bottom-sheet';
+  const options = CONFIG.labels.mealTypes.map(t => `<option>${t}</option>`).join('');
+  sheet.innerHTML = `
+    <div class="bottom-sheet__backdrop"></div>
+    <div class="bottom-sheet__panel">
+      <div class="bottom-sheet__header">
+        <span class="bottom-sheet__title">⚡ Quick Add</span>
+        <span class="bottom-sheet__sub">Enter nutrition values directly</span>
+      </div>
+      <div class="bottom-sheet__body" style="display:flex;flex-direction:column;gap:10px">
+        <div>
+          <label class="sheet-label">Name (optional)</label>
+          <input id="qa-name" class="sheet-input" type="text" placeholder="e.g. Restaurant noodles"
+            autocomplete="off" style="font-size:16px">
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+          <div>
+            <label class="sheet-label">Calories (kcal) *</label>
+            <input id="qa-calories" class="sheet-input" type="number" min="0" step="1"
+              placeholder="e.g. 550" inputmode="decimal" style="font-size:16px">
+          </div>
+          <div>
+            <label class="sheet-label">Protein (g)</label>
+            <input id="qa-protein" class="sheet-input" type="number" min="0" step="0.1"
+              placeholder="0" inputmode="decimal" style="font-size:16px">
+          </div>
+          <div>
+            <label class="sheet-label">Carbs (g)</label>
+            <input id="qa-carbs" class="sheet-input" type="number" min="0" step="0.1"
+              placeholder="0" inputmode="decimal" style="font-size:16px">
+          </div>
+          <div>
+            <label class="sheet-label">Fat (g)</label>
+            <input id="qa-fat" class="sheet-input" type="number" min="0" step="0.1"
+              placeholder="0" inputmode="decimal" style="font-size:16px">
+          </div>
+          <div>
+            <label class="sheet-label">Fibre (g)</label>
+            <input id="qa-fibre" class="sheet-input" type="number" min="0" step="0.1"
+              placeholder="0" inputmode="decimal" style="font-size:16px">
+          </div>
+          <div>
+            <label class="sheet-label">Meal</label>
+            <select id="qa-meal" class="sheet-select" style="font-size:16px">${options}</select>
+          </div>
+        </div>
+        <p id="qa-calc-preview" style="font-size:13px;color:var(--color-text-secondary);margin:0;font-family:var(--font-sans)"></p>
+      </div>
+      <div class="bottom-sheet__footer">
+        <button id="qa-cancel" class="btn btn--ghost">Cancel</button>
+        <button id="qa-confirm" class="btn btn--primary">Add to Log</button>
+      </div>
+    </div>`;
+  document.body.appendChild(sheet);
+  requestAnimationFrame(() => sheet.classList.add('bottom-sheet--visible'));
+
+  const closeQA = () => {
+    sheet.classList.remove('bottom-sheet--visible');
+    setTimeout(() => sheet.remove(), 250);
+  };
+  sheet.querySelector('.bottom-sheet__backdrop').addEventListener('click', closeQA);
+  sheet.querySelector('#qa-cancel').addEventListener('click', closeQA);
+
+  // Live calorie preview from macros
+  const updatePreview = () => {
+    const p = parseFloat(sheet.querySelector('#qa-protein').value) || 0;
+    const c = parseFloat(sheet.querySelector('#qa-carbs').value)   || 0;
+    const f = parseFloat(sheet.querySelector('#qa-fat').value)     || 0;
+    const fromMacros = Math.round(f * 9 + c * 4 + p * 4);
+    const el = sheet.querySelector('#qa-calc-preview');
+    if (el && fromMacros > 0) el.textContent = `Calculated from macros: ${fromMacros} kcal`;
+    else if (el) el.textContent = '';
+  };
+  ['#qa-protein','#qa-carbs','#qa-fat'].forEach(id =>
+    sheet.querySelector(id)?.addEventListener('input', updatePreview));
+
+  sheet.querySelector('#qa-confirm').addEventListener('click', () => confirmQuickAdd(sheet, closeQA));
+}
+
+async function confirmQuickAdd(sheet, closeQA) {
+  const { today: getToday } = await import('./utils.js');
+  const name     = sheet.querySelector('#qa-name').value.trim();
+  const calories = parseFloat(sheet.querySelector('#qa-calories').value) || 0;
+  const protein  = parseFloat(sheet.querySelector('#qa-protein').value)  || 0;
+  const carbs    = parseFloat(sheet.querySelector('#qa-carbs').value)    || 0;
+  const fat      = parseFloat(sheet.querySelector('#qa-fat').value)      || 0;
+  const fibre    = parseFloat(sheet.querySelector('#qa-fibre').value)    || 0;
+  const mealType = sheet.querySelector('#qa-meal').value || 'Other';
+
+  if (!calories && !protein && !carbs && !fat) {
+    showToast('Enter at least calories or one macro', 'error'); return;
+  }
+
+  const confirmBtn = sheet.querySelector('#qa-confirm');
+  const cancelBtn  = sheet.querySelector('#qa-cancel');
+  confirmBtn.disabled = true; confirmBtn.textContent = 'Adding…';
+  cancelBtn.disabled  = true;
+  setPageBusy(true);
+
+  try {
+    const date = store.state.currentDate || getToday();
+    const result = await addQuickAdd({ date, mealType, name, calories, protein, carbs, fat, fibre });
+    // Add to in-memory store so log re-renders without re-fetch
+    if (!store.state.dailyLog) store.state.dailyLog = {};
+    if (!store.state.dailyLog[date]) store.state.dailyLog[date] = [];
+    store.state.dailyLog[date].push({
+      rowIndex:  result.rowIndex,
+      date, mealType,
+      foodNo:    result.foodNo,
+      name:      name || 'Quick Add',
+      amount:    1, unit: 'serving',
+      calories:  result.calories,
+      protein, carbs, fat, fibre,
+      sodium: 0, potassium: 0,
+    });
+    const { invalidateLogCache, renderSidebarSummary } = await import('./log.js');
+    invalidateLogCache(date);
+    const { renderLog } = await import('./log.js').then(m => ({ renderLog: m.renderLogPublic })).catch(() => ({}));
+    // Trigger log re-render via store signal
+    const { getDailyLog } = await import('./api.js');
+    store.state.dailyLog[date] = await getDailyLog(date);
+    const logMod = await import('./log.js');
+    if (logMod.refreshLog) logMod.refreshLog(date);
+    renderSidebarSummary(store.state.dailyLog[date]);
+    showToast(`${name || 'Quick Add'} added ✓`, 'success');
+    closeQA();
+  } catch (err) {
+    console.error('[search] confirmQuickAdd:', err);
+    showToast('Failed to add — please try again', 'error');
+    confirmBtn.disabled = false; confirmBtn.textContent = 'Add to Log';
+    cancelBtn.disabled  = false;
+  } finally {
+    setPageBusy(false);
+  }
 }
 
 // ── Favourites page ───────────────────────────────────────────

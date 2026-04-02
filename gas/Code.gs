@@ -1,7 +1,7 @@
 // ============================================================
 // NutriLog — Google Apps Script Backend
-// Fixed: buildFoodRecord correctly reads amount/unit
-//        (handles text-formatted numbers + non-100g entries)
+// B6: addQuickAdd (writes CustomFoods IS_QUICK_ADD=TRUE + DailyLog)
+//     deleteLogEntry: cascade-deletes CustomFoods if IS_QUICK_ADD=TRUE
 // ============================================================
 
 function doGet(e) {
@@ -28,6 +28,7 @@ function route(action, params) {
     case 'deleteLogEntry':  return deleteLogEntry(params);
     case 'updateLogEntry':  return updateLogEntry(params);
     case 'syncDailySummary':return syncDailySummary(params);
+    case 'addQuickAdd':     return addQuickAdd(params);
     default: return { ok: false, error: `Unknown action: ${action}` };
   }
 }
@@ -42,10 +43,8 @@ function verifyToken(token) {
 }
 
 // ── Helper: parse amount from cell value ──────────────────────
-// Handles: number 100, string "100", string "'100", empty, 0
 function parseAmount(raw) {
   if (raw === null || raw === undefined || raw === '') return null;
-  // Strip leading apostrophe (text-formatted cells in Sheets)
   const str = String(raw).replace(/^'+/, '').trim();
   const n = parseFloat(str);
   return (!isNaN(n) && n > 0) ? n : null;
@@ -148,16 +147,12 @@ function buildFoodRecord(r, C) {
   const protein = Number(r[C.protein]) || 0;
   const carbs   = Number(r[C.carbs])   || 0;
   const fat     = Number(r[C.fat])     || 0;
-
-  // Use actual amount/unit from DB — do NOT default to 100/g if DB has a real value
-  const amount = parseAmount(r[C.amount]) || 100;
-  const unit   = parseUnit(r[C.unit])     || 'g';
-
+  const amount  = parseAmount(r[C.amount]) || 100;
+  const unit    = parseUnit(r[C.unit])     || 'g';
   return {
     no:          Number(r[C.no]),
     name:        String(r[C.name] || ''),
-    amount,
-    unit,
+    amount, unit,
     calories:    Math.round(fat * 9 + carbs * 4 + protein * 4),
     protein, carbs, fat,
     fibre:       Number(r[C.fibre]       || 0),
@@ -277,7 +272,7 @@ function addLogEntry(params) {
   return { ok: true, data: { rowIndex: sh.getLastRow() } };
 }
 
-// ── B5: deleteLogEntry ─────────────────────────────────────────
+// ── B5: deleteLogEntry — B6: cascade Quick Add ─────────────────
 function deleteLogEntry(params) {
   if (!verifyToken(params.token || '')) return { ok: false, error: 'Unauthorized' };
   let payload;
@@ -285,7 +280,27 @@ function deleteLogEntry(params) {
   catch (e) { return { ok: false, error: 'Invalid payload' }; }
   const rowIndex = Number(payload.rowIndex);
   if (!rowIndex || rowIndex < 2) return { ok: false, error: 'Invalid rowIndex' };
-  getSheet(CONFIG.sheets.dailyLog).deleteRow(rowIndex);
+
+  const logSh  = getSheet(CONFIG.sheets.dailyLog);
+  const logRow = logSh.getRange(rowIndex, 1, 1, 14).getValues()[0];
+  const CL     = CONFIG.columns.dailyLog;
+  const foodNo = logRow[CL.foodNo] ? Number(logRow[CL.foodNo]) : null;
+
+  // B6: cascade-delete CustomFoods row if IS_QUICK_ADD = TRUE
+  if (foodNo && foodNo >= 50001) {
+    const cfSh   = getSheet(CONFIG.sheets.customFoods);
+    const cfRows = cfSh.getDataRange().getValues();
+    const CC     = CONFIG.columns.customFoods;
+    for (let i = 1; i < cfRows.length; i++) {
+      if (Number(cfRows[i][CC.no]) === foodNo) {
+        const isQA = cfRows[i][CC.isQuickAdd] === true || cfRows[i][CC.isQuickAdd] === 'TRUE';
+        if (isQA) cfSh.deleteRow(i + 1);
+        break;
+      }
+    }
+  }
+
+  logSh.deleteRow(rowIndex);
   return { ok: true, data: null };
 }
 
@@ -363,4 +378,72 @@ function syncDailySummary(params) {
   }
   sumSh.appendRow(newRow);
   return { ok: true, data: { updated: false } };
+}
+
+// ── B6: addQuickAdd ────────────────────────────────────────────
+// Writes CustomFoods (IS_QUICK_ADD=TRUE) + DailyLog in one call
+function addQuickAdd(params) {
+  if (!verifyToken(params.token || '')) return { ok: false, error: 'Unauthorized' };
+  let e;
+  try { e = JSON.parse(decodeURIComponent(params.payload || '{}')); }
+  catch (err) { return { ok: false, error: 'Invalid payload' }; }
+
+  // 1. Generate new foodNo: max existing CustomFoods no + 1, floor at 50001
+  const cfSh   = getSheet(CONFIG.sheets.customFoods);
+  const cfRows = cfSh.getDataRange().getValues();
+  const CC     = CONFIG.columns.customFoods;
+  let maxNo    = 50000;
+  for (let i = 1; i < cfRows.length; i++) {
+    const n = Number(cfRows[i][CC.no]);
+    if (n > maxNo) maxNo = n;
+  }
+  const foodNo = maxNo + 1;
+
+  // 2. Calculate nutrition (always use formula, never trust caller's calories)
+  const protein  = Number(e.protein)  || 0;
+  const carbs    = Number(e.carbs)    || 0;
+  const fat      = Number(e.fat)      || 0;
+  const fibre    = Number(e.fibre)    || 0;
+  const calories = Math.round(fat * 9 + carbs * 4 + protein * 4);
+  const name     = String(e.name || 'Quick Add').trim() || 'Quick Add';
+  const dt       = Utilities.formatDate(new Date(), Session.getScriptTimeZone(), "d/M/yy H:mm");
+
+  // 3. Write CustomFoods row
+  const cfRow = new Array(13).fill('');
+  cfRow[CC.no]              = foodNo;
+  cfRow[CC.name]            = name;
+  cfRow[CC.amount]          = 1;
+  cfRow[CC.unit]            = 'serving';
+  cfRow[CC.calories]        = calories;
+  cfRow[CC.protein]         = protein;
+  cfRow[CC.carbs]           = carbs;
+  cfRow[CC.fat]             = fat;
+  cfRow[CC.fibre]           = fibre;
+  cfRow[CC.sodium]          = Number(e.sodium)    || 0;
+  cfRow[CC.potassium]       = Number(e.potassium) || 0;
+  cfRow[CC.isQuickAdd]      = true;
+  cfRow[CC.createdDatetime] = dt;
+  cfSh.appendRow(cfRow);
+
+  // 4. Write DailyLog row
+  const logSh  = getSheet(CONFIG.sheets.dailyLog);
+  const CL     = CONFIG.columns.dailyLog;
+  const logRow = new Array(14).fill('');
+  logRow[CL.date]            = e.date;
+  logRow[CL.mealType]        = e.mealType || 'Other';
+  logRow[CL.foodNo]          = foodNo;
+  logRow[CL.name]            = name;
+  logRow[CL.amount]          = 1;
+  logRow[CL.unit]            = 'serving';
+  logRow[CL.calories]        = calories;
+  logRow[CL.protein]         = protein;
+  logRow[CL.carbs]           = carbs;
+  logRow[CL.fat]             = fat;
+  logRow[CL.fibre]           = fibre;
+  logRow[CL.sodium]          = Number(e.sodium)    || 0;
+  logRow[CL.potassium]       = Number(e.potassium) || 0;
+  logRow[CL.createdDatetime] = dt;
+  logSh.appendRow(logRow);
+
+  return { ok: true, data: { foodNo, rowIndex: logSh.getLastRow(), calories } };
 }

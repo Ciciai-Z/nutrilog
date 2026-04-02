@@ -1,6 +1,6 @@
 // ============================================================
 // api.js — All HTTP communication with Apps Script (JSONP)
-// Fixed: syncDailySummary timeout increased to 30s
+// B6: addQuickAdd endpoint added
 // ============================================================
 import { CONFIG } from '../config.js';
 import { store } from './store.js';
@@ -50,7 +50,6 @@ export async function updateSettings(settings) {
 
 // ── B2 ────────────────────────────────────────────────────────
 export async function searchFoods(q = '') {
-  // Full DB load can be slow — allow 30s
   return (await jsonpFetch('searchFoods', null, { q }, 30000)).data;
 }
 export async function getFavourites() {
@@ -75,7 +74,11 @@ export async function deleteLogEntry(rowIndex) {
 export async function updateLogEntry(rowIndex, amount) {
   return (await jsonpFetch('updateLogEntry', { rowIndex, amount })).data;
 }
-// syncDailySummary can be slow on GAS cold start — allow 40s
 export async function syncDailySummary(date) {
   return (await jsonpFetch('syncDailySummary', { date }, null, 40000)).data;
+}
+
+// ── B6 ────────────────────────────────────────────────────────
+export async function addQuickAdd(entry) {
+  return (await jsonpFetch('addQuickAdd', entry)).data;
 }

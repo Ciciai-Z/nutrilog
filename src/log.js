@@ -37,6 +37,13 @@ export async function initLog(macMode = false) {
 
 export function invalidateLogCache(date) { delete store.state.dailyLog[date]; }
 
+// Called by search.js after Quick Add to re-render today's log
+export async function refreshLog(date) {
+  const d = date || store.state.currentDate || today();
+  const entries = store.state.dailyLog[d] || [];
+  renderLog(d, entries);
+}
+
 // ── Mobile shell ───────────────────────────────────────────────
 function renderLogShellMobile(date) {
   const view = document.getElementById('view-today'); if (!view) return;
@@ -125,6 +132,9 @@ function renderLogShellMac(date) {
               <button class="mac-search-add-bar__btn" id="mac-add-btn">+ Add</button>
             </div>
             <div class="mac-add-nutrition-preview" id="mac-nutrition-preview" style="display:none"></div>
+            <div class="mac-quick-add-footer" id="mac-quick-add-footer">
+              <button class="mac-quick-add-link" id="mac-quick-add-btn">⚡ Quick Add — enter nutrition directly</button>
+            </div>
           </div>
         </div>
       </header>
@@ -253,6 +263,13 @@ function bindMacSearch() {
 
   const showDD=()=>{pill.classList.add('mac-search-pill--expanded');dropdown.classList.add('mac-search-dropdown--visible');};
   const hideDD=()=>{pill.classList.remove('mac-search-pill--expanded');dropdown.classList.remove('mac-search-dropdown--visible');addBar.style.display='none';nutPrev.style.display='none';_macSelFood=null;};
+
+  // Mac Quick Add button
+  document.getElementById('mac-quick-add-btn')?.addEventListener('click', async () => {
+    hideDD();
+    try { const { openQuickAddSheet } = await import('./search.js'); openQuickAddSheet(); }
+    catch(err) { console.error('[log] mac quickAdd:', err); }
+  });
 
   input.addEventListener('focus',()=>{showDD();renderDD(getFavFoods().slice(0,8));});
   input.addEventListener('input',()=>{
