@@ -1,7 +1,7 @@
 # NutriLog — Project Context for Claude
 
 > 这个文件是给 Claude 读的。每次新对话开始时，请先阅读此文件，再开始工作。
-> Last updated: 2026-03-24 · Session 6 · B5 稳定运行，持续 Polish
+> Last updated: 2026-04-02 · Session 7 · B6/B8/B9 完成，进入 Polish 阶段
 
 ---
 
@@ -15,18 +15,32 @@ NutriLog 是一个**个人单用户营养记录 Web 应用**。数据存储在 G
 
 ## 当前项目状态
 
-**阶段：B5 ✅ 稳定使用 · Session 6 UI/UX Polish 完成 · B6 Quick Add 待实现**
+**阶段：B6/B8/B9 ✅ 完成 · Session 7 Polish 完成 · 进入 TODO Polish 阶段**
 
 ### Block 进度
 
 | Block | 名称 | 状态 |
 |-------|------|------|
 | B0–B5 | 基础设施 → Log CRUD | ✅ 完成 |
-| Session 5/6 | UI Polish | ✅ 完成（大量修复）|
-| B6 | Quick Add | ⬜ 下一步 |
-| B7 | Custom Foods CRUD | ⬜ |
-| B8 | Meal Templates | ⬜ |
-| B9 | History + final Polish | ⬜ |
+| Session 5/6 | UI Polish | ✅ 完成 |
+| B6 | Quick Add | ✅ 完成 |
+| B7 | Custom Foods CRUD | ✅ 完成 |
+| B8 | Meal Templates (Composed only) | ✅ 完成 |
+| B9 | History (DailySummary view) | ✅ 完成 |
+| Session 7 | 自动登出、字体系统、bug fixes | ✅ 完成 |
+| TODO Polish | 见下方 TODO 列表 | 🔄 进行中 |
+
+### TODO Polish 剩余
+
+| ID | 描述 | 优先级 |
+|----|------|--------|
+| TODO-01 | Settings 输入框范围提示 | 低 |
+| TODO-02 | 登录页键盘 12 格对称 | 暂不做 |
+| TODO-03 | Tab Bar 字体优化 | 低 |
+| TODO-05 | Mac 宽屏 Today 条目双列布局 | 中 |
+| TODO-06 | Mac Today 日期点击弹日历 | 中 |
+| TODO-07 | 整体 Layout 优化 | 中 |
+| — | 修改密码功能 | 暂不做 |
 
 ---
 
@@ -56,8 +70,8 @@ Spreadsheet ID: `1_dmh0QWC68VUxts1iiyi-6VXdekWKB3TuNDROlmY_QU`
 | Sheet | 用途 | 读写 |
 |-------|------|------|
 | NutritionDB | 预置食物库 ~2,500 条 | 只读 |
-| CustomFoods | 用户自定义食物 | 读写 |
-| Meals | Meal 模板 | 读写 |
+| CustomFoods | 用户自定义食物 + Quick Add | 读写 |
+| Meals | Meal 模板（Composed） | 读写 |
 | DailyLog | 每日饮食记录 | 读写 |
 | DailySummary | 每日汇总 | 读写 |
 | Settings | 营养目标 + PIN hash + day_title | 读写 |
@@ -74,6 +88,25 @@ CALORIES | PROTEIN | CARBS | FAT | FIBRE | SODIUM | POTASSIUM | CREATED_DATETIME
 - DATE 格式：`ddd,d/m/yy`（如 `Mon,23/3/26`）
 - 无 MEAL_NO 列
 
+### CustomFoods 列结构
+
+```
+NO | NAME | AMOUNT | UNIT | CALORIES | PROTEIN | CARBS | FAT | FIBRE | SODIUM | POTASSIUM | IS_QUICK_ADD | CREATED_DATETIME
+```
+
+- NO 从 50001 开始（避免与 NutritionDB 1-2500 冲突）
+- IS_QUICK_ADD: TRUE/FALSE
+
+### Meals 列结构（B8，0-based）
+
+```
+DATE(0) | MEAL_NO(1) | NAME(2) | FOOD(3) | AMOUNT(4) | UNIT(5) |
+CALORIES(6) | PROTEIN(7) | CARBS(8) | FAT(9) | FIBRE(10) | CREATED_DATETIME(11)
+```
+
+- DATE 列 repurposed 为 CREATED_DATE
+- MEAL_NO 格式：`meal001`、`meal002`…
+
 ### NutritionDB 列结构
 
 - 所有食物均为 per 100g 标准数据（AMOUNT=100, UNIT=g）
@@ -86,22 +119,55 @@ CALORIES | PROTEIN | CARBS | FAT | FIBRE | SODIUM | POTASSIUM | CREATED_DATETIME
 
 ```
 src/
-  main.js     — 路由、tab 切换、nav-bar date picker（JS click）、sidebar、预加载
-  api.js      — JSONP 请求（syncDailySummary 超时 40s，searchFoods 超时 30s）
-  auth.js     — PIN 输入、processing 状态（Verifying…动画）、token 管理
-  store.js    — 全局内存状态
+  main.js     — 路由、tab 切换、nav-bar date picker、sidebar、预加载、startIdleWatcher
+  api.js      — JSONP 请求（含 B6/B8/B9 端点）
+  auth.js     — PIN 输入、processing 状态、5分钟自动登出
+  store.js    — 全局内存状态（含 meals/history 缓存）
   log.js      — Today log CRUD + 所有交互
-  search.js   — Food search、Favourites 页面、add sheet
+  search.js   — Food search、Favourites、Quick Add sheet
   settings.js — 目标设置
+  meals.js    — B8 Meal Templates CRUD
+  history.js  — B9 History（读 DailySummary）
   ui.js       — toast
   utils.js    — 日期格式化、calcCalories、sha256
 styles/
-  tokens.css  — CSS 变量
-  main.css    — 所有样式（含多次 patch 追加）
+  tokens.css  — CSS 变量（含 --font-title: Montserrat, --font-body: Open Sans）
+  main.css    — 所有样式
 gas/
-  Code.gs     — GAS 路由（含 parseAmount/parseUnit helper）
-  config.gs   — Sheet 名称、列索引
+  Code.gs     — GAS 路由（含所有端点）
+  config.gs   — Sheet 名称、列索引（含 meals 列）
+docs/
+  NutriLog_Changelog_v1.3.docx
+  NutriLog_TechArchitecture_v1.6.docx
+  NutriLog_OperationsRunbook_v4.0.docx
+  NutriLog_PRD_v0.4.docx
+  NutriLog_ProjectPlan_v1.1.docx
+  NutriLog_DevStandards_v1.1.docx
+  NutriLog_UI_Screens_v1.3.docx
 ```
+
+---
+
+## GAS API 端点（完整列表）
+
+| Action | 状态 | 说明 |
+|--------|------|------|
+| verifyPin | ✅ | PIN 验证，返回 token |
+| getSettings | ✅ | 返回所有 settings key-value |
+| updateSettings | ✅ | 更新 settings，不覆盖 pin_hash |
+| searchFoods | ✅ | NutritionDB + CustomFoods，timeout 30s |
+| getFavourites | ✅ | 返回收藏 food NO 数组 |
+| toggleFavourite | ✅ | 添加/删除收藏 |
+| getDailyLog | ✅ | 返回指定日期的 log entries |
+| addLogEntry | ✅ | 追加 DailyLog 行 |
+| deleteLogEntry | ✅ | 删除 DailyLog 行；IS_QUICK_ADD=TRUE 时联动删 CustomFoods + Favourites |
+| updateLogEntry | ✅ | 更新 amount + 等比例缩放营养 |
+| syncDailySummary | ✅ | 写 DailySummary，timeout 40s |
+| addQuickAdd | ✅ B6 | 写 CustomFoods (IS_QUICK_ADD=TRUE) + DailyLog；calories 直接存入 |
+| getMeals | ✅ B8 | 返回所有 Meal 模板行 |
+| saveMeal | ✅ B8 | 创建新 Meal，自动生成 mealNo |
+| deleteMeal | ✅ B8 | 删除指定 mealNo 的所有行（从下往上删避免行移位） |
+| getHistory | ✅ B9 | 返回 DailySummary 所有行（跳过前2行 header），timeout 30s |
 
 ---
 
@@ -111,7 +177,22 @@ gas/
 ```js
 calories = Math.round(fat * 9 + carbs * 4 + protein * 4)
 // 永远不读 CALS 列
+// 例外：Quick Add 的 calories 直接存用户输入值，不用公式
 ```
+
+### Quick Add 规则
+- Name 必填
+- Calories 必填，必须 > 0
+- 所有数值字段：最大 3000，最多 1 位小数，必须为正数
+- GAS 存入用户填写的 calories，不重新计算
+- 删除该 log entry → 联动删 CustomFoods + Favourites（若已收藏）
+- 添加后立刻 push 进 `store.state.foods`，Favourites 页面可立即找到
+
+### 自动登出
+- 任意 mousemove / mousedown / keydown / touchstart / scroll / click 重置计时器
+- 5 分钟无操作 → 自动 logout + toast 提示
+- `startIdleWatcher()` 在登录成功后调用
+- `stopIdleWatcher()` 在 logout 时调用
 
 ### 日期格式
 - 内部：`ddd,d/m/yy`（`Mon,23/3/26`）
@@ -120,59 +201,89 @@ calories = Math.round(fat * 9 + carbs * 4 + protein * 4)
 - 显示（iPhone，在 title 和 search 之间居中）：同 Mac 格式
 - 转换：`main.js` 的 `internalToISO()` / `ISOToInternal()` / `formatPillDisplay()`
 
-### Entry Row 布局（Session 6 确认）
+### Entry Row 布局（确认）
 ```
 [食物名称]
 [kcal P C F Fi macros]          [Xunit badge] [★] [✕]
 ```
-- 右侧三个按钮顺序：amount badge → star → delete（均在 `.entry-row__right` flex 行内）
-- Delete 按钮：灰色（`#6B6B65`），不变红，iPhone 更深更大
+- 右侧三个按钮顺序：amount badge → star → delete
+- Delete 按钮：灰色（`#6B6B65`），不变红
 
-### iPhone Today 页面结构（Session 6 确认）
+### iPhone Today 页面结构（确认）
 ```
-[可编辑 DM Serif 标题]
-[居中日期标签 — 在 title 和 search 之间]
-[Search bar]
+[可编辑 Montserrat 标题（大写、斜体、加粗）]
+[居中日期标签 — 可点击弹出 date picker（inset:0 覆盖整行）]
+[Search bar + ⚡ Quick Add 按钮]
 [Macro strip — 5 chips: 🔥💪🌾🥑🌿]
 [Meal sections]
 [Save Summary button]
 ```
 
-### Macro Strip（Session 6 确认）
-- 5个 chip：🔥 🔥Calories / 💪 Protein / 🌾 Carbs / 🥑 Fat / 🌿 Fibre
+### Mac Today 页面结构
+```
+[左：可编辑标题 | 中：日期导航 ‹ Today › | 右：Search pill]
+  └─ dropdown: 食物结果 + ⚡ Quick Add footer（独立区块，分隔线）
+[Meal sections]
+```
+
+### Macro Strip
+- 5个 chip：🔥 Calories / 💪 Protein / 🌾 Carbs / 🥑 Fat / 🌿 Fibre
 - 显示格式：`actual / target`，超 110% 橙色，超 120% 红色
 
 ### Remaining Today
 - 允许负数（显示红色）
 - 不再强制 `Math.max(0, ...)`
 
+### setPageBusy（Bug fix Session 7）
+- 使用 `position:fixed;inset:0` overlay div，append 到 body
+- 不受 `renderLog` DOM 重建影响
+- amount edit 和 Save Summary 期间都会触发
+- `_amountEditActive` 全局标志防止多个 entry 同时编辑
+
+### amount 更新（Bug fix）
+- `updateLogEntry` 完成后直接更新 `store.state.dailyLog[date]` 里的那条 entry
+- **不要** 在 in-memory 更新后调用 `invalidateLogCache`（会传 undefined 给 renderLog）
+- 只调用 `renderLog`，不重新 fetch
+
+### Meals（B8）
+- 只实现 Composed Meal（Manual Meal 暂不做）
+- 创建 modal：输入名称 + 搜索添加食物 + 实时总营养预览
+- 添加到 log：选 meal type → 每个食物写一行 DailyLog
+- 缓存：`store.state.meals`，创建/删除后设 `null` 强制刷新
+
+### History（B9）
+- 读 DailySummary sheet（skipRows=2 跳过 header）
+- 按日期倒序排列
+- 每张卡片：日期、🔥💪🌾🥑 emoji 营养值、进度条、状态 badge
+- 缓存：`store.state.history`，tab 切换不重复 fetch
+
 ### Save Summary 超时
 - GAS 冷启动可能慢，`syncDailySummary` JSONP 超时改为 40 秒
-- 按钮在处理中显示 "Saving…" 并 disabled
-
-### PIN 登录 Processing 状态
-- 输入4位 PIN 后显示 "Verifying…" 脉冲动画
-- keypad 置灰，dot display 半透明
+- 按钮在处理中显示 "Saving…" 并 disabled，overlay 锁全页
 
 ### iOS 搜索键盘工具栏
-- 底部 sheet 搜索框改用 `type="text" inputmode="search"`
-- 消除 iOS Safari 的 ‹ › ✓ 工具栏
+- 底部 sheet 搜索框用 `type="text" inputmode="search"`
 
-### Add Food Processing 状态
-- iPhone add sheet 点 "Add to Log" 后：按钮 "Adding…" disabled，Cancel 禁用
-- Favourites expand panel 点 "+ Add" 后：按钮 "Adding…" disabled，input/select 禁用
-
-### Touch Drag（iPhone）
-- 长按 500ms 触发拖拽
-- 触发后：body `user-select:none`，创建 clone，显示 drop targets
-- touchmove: `passive:false` 阻止滚动
-- 所有 touchend/touchcancel 调统一 `cleanup()`
-- 按钮点击不触发拖拽（`if(e.target.closest('button'))return`）
+### iPhone 日期 Date Picker
+- `log-mobile-date-row` 下放 `input[type=date]`，`inset:0; opacity:0`，铺满整行
+- iOS Safari 对可见尺寸的 input 会正常触发 picker
 
 ### Mac Date Picker
 - `<button id="nav-date-btn">` + `<input type="date">` 覆盖
 - 点击按钮调 `input.showPicker()` 或 `input.click()`（Safari 兼容）
-- 窗口 resize 时更新 pill 文字格式（Mac=全格式，iPhone=短格式）
+
+---
+
+## 字体系统（Session 7 更新）
+
+| Token | 字体 | 用途 |
+|-------|------|------|
+| `--font-sans` | DM Sans 400/500 | 所有正文、UI 文字 |
+| `--font-serif` | DM Serif Display italic | 仅 Today 页面可编辑标题 |
+| `--font-title` | Montserrat 700 | 所有页面主标题（uppercase）|
+| `--font-body` | Open Sans 400/500 | 副标题、说明文字（备用）|
+
+主标题范围：Meals、History、Settings、Favourites 的页面标题
 
 ---
 
@@ -200,11 +311,6 @@ calories = Math.round(fat * 9 + carbs * 4 + protein * 4)
 | Snacks | `#F6ECF0` / `#DDB8C8` | 🍓 |
 | Other | `#F0F0EE` / `#C8C8C4` | 📦 |
 
-### 字体
-- DM Serif Display italic: 页面级标题
-- DM Sans 400/500: 其余所有文字（禁用 600/700）
-- 每个元素必须显式声明 font-family
-
 ---
 
 ## 开发规范摘要
@@ -217,50 +323,20 @@ calories = Math.round(fat * 9 + carbs * 4 + protein * 4)
 - 不要覆盖 `pin_hash`
 - 不要自动修改 DailySummary（只在用户点 Save Summary 时写入）
 - cache 版本：`index.html` 里 `src/main.js?v=N` 每次主要变更递增
+- Meals/History 页面有 store 缓存，创建/删除后设 `store.state.meals/history = null` 强制刷新
 
 ---
 
 ## 不要做的事
 
 - ❌ 不要修改 NutritionDB sheet 数据
-- ❌ 不要用 CALS 列计算热量
+- ❌ 不要用 CALS 列计算热量（Quick Add 例外：直接存用户输入值）
 - ❌ 不要添加构建工具
 - ❌ 不要用 fetch()（必须 JSONP）
 - ❌ 不要覆盖 pin_hash
 - ❌ 不要在 meal header/entry 行用 emoji 营养图标（只在 Summary 和 macro strip）
-- ❌ 不要用 font-weight 600/700
 - ❌ 不要在 main.css 里追加多个重复 @media(768) 块
-
----
-
-## B6 Quick Add — 待实现
-
-### 目标
-外食/估算场景：用户直接输入营养数值（不需要搜索食物数据库），快速记录。
-
-### 行为规范（来自 PRD v0.3）
-1. 用户输入：食物名称（可选）+ 已知营养值（calories, protein, carbs, fat, fibre）
-2. 写入 CustomFoods（`IS_QUICK_ADD = TRUE`）+ 同时写入 DailyLog
-3. 删除 DailyLog 条目 → 联动删除对应 CustomFoods 行
-4. 若用户在 Food Library 手动编辑过该食物 → `IS_QUICK_ADD = FALSE` → 删除 log 不再联动
-
-### UI 位置
-- iPhone：Today 页面 search bar 旁边或底部，或单独 "Quick Add" 按钮
-- Mac：search pill dropdown 里加 "Quick Add" 选项
-
-### GAS 端点（待实现）
-```
-addQuickAdd  ← 同时写 CustomFoods (IS_QUICK_ADD=TRUE) + DailyLog
-```
-删除逻辑修改：
-```
-deleteLogEntry 需判断 IS_QUICK_ADD → 联动删 CustomFoods
-```
-
-### 验收
-- [ ] Quick Add 表单写入 CustomFoods + DailyLog
-- [ ] 删除该 log 行 → CustomFoods 对应行消失
-- [ ] 编辑后 IS_QUICK_ADD=FALSE → 删 log 不联动
+- ❌ 不要在 store in-memory 更新后调用 `invalidateLogCache`（会导致 renderLog 收到 undefined）
 
 ---
 
