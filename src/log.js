@@ -720,7 +720,7 @@ async function moveEntry(rowIndex,targetMeal) {
     if(!entry||entry.mealType===targetMeal)return;
     if(store.state.dailyLog[date]){store.state.dailyLog[date]=store.state.dailyLog[date].map(e=>e.rowIndex===rowIndex?{...e,mealType:targetMeal}:e);}
     renderLog(date,store.state.dailyLog[date]);showToast(`Moved to ${targetMeal} ✓`,'success');
-    await deleteLogEntry(rowIndex);await addLogEntry({...entry,mealType:targetMeal,rowIndex:undefined});
+    await deleteLogEntry(rowIndex, true);await addLogEntry({...entry,mealType:targetMeal,rowIndex:undefined});
     // Invalidate and re-fetch so both Mac and iPhone share updated state
     invalidateLogCache(date);
     store.state.dailyLog[date]=await getDailyLog(date);

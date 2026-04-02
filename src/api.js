@@ -68,8 +68,8 @@ export async function getDailyLog(date) {
 export async function addLogEntry(entry) {
   return (await jsonpFetch('addLogEntry', entry)).data;
 }
-export async function deleteLogEntry(rowIndex) {
-  return (await jsonpFetch('deleteLogEntry', { rowIndex })).data;
+export async function deleteLogEntry(rowIndex, skipCascade = false) {
+  return (await jsonpFetch('deleteLogEntry', { rowIndex, skipCascade })).data;
 }
 export async function updateLogEntry(rowIndex, amount) {
   return (await jsonpFetch('updateLogEntry', { rowIndex, amount })).data;
