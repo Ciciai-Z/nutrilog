@@ -477,6 +477,7 @@ function getMeals(params) {
       mealNo:   String(r[CM.mealNo]),
       name:     String(r[CM.name]     || ''),
       food:     String(r[CM.food]     || ''),
+      foodNo:   r[CM.foodNo] ? Number(r[CM.foodNo]) : null,
       amount:   Number(r[CM.amount]   || 0),
       unit:     String(r[CM.unit]     || 'g'),
       calories: Number(r[CM.calories] || 0),
@@ -515,11 +516,12 @@ function saveMeal(params) {
   const date   = Utilities.formatDate(new Date(), Session.getScriptTimeZone(), "EEE,d/M/yy");
 
   for (const f of foods) {
-    const row = new Array(12).fill('');
+    const row = new Array(13).fill('');
     row[CM.date]            = date;
     row[CM.mealNo]          = mealNo;
     row[CM.name]            = name;
     row[CM.food]            = String(f.foodName || '');
+    row[CM.foodNo]          = f.foodNo || '';
     row[CM.amount]          = Number(f.amount)   || 0;
     row[CM.unit]            = String(f.unit      || 'g');
     row[CM.calories]        = Number(f.calories) || 0;

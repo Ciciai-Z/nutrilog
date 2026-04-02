@@ -300,7 +300,7 @@ async function confirmAddToLog(modal, group) {
     for (const f of group.foods) {
       await addLogEntry({
         date, mealType,
-        foodNo:    '',
+        foodNo:    f.foodNo || '',
         name:      f.food,
         amount:    Number(f.amount) || 100,
         unit:      f.unit  || 'g',

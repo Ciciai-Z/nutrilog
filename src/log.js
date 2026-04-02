@@ -735,7 +735,11 @@ async function handleSync() {
   const btns=['log-sync-btn-mobile','sidebar-save-btn'].map(id=>document.getElementById(id)).filter(Boolean);
   btns.forEach(b=>{b.disabled=true;b.textContent='Saving…';b.style.opacity='0.7';});
   setPageBusy(true);
-  try{await syncDailySummary(date);showToast('Saved to DailySummary ✓','success');}
+  try{
+    await syncDailySummary(date);
+    store.state.history = null; // Bug2 fix: invalidate history cache after sync
+    showToast('Saved to DailySummary ✓','success');
+  }
   catch(err){console.error('[log] handleSync:',err);showToast('Save failed — try again','error');}
   finally{
     btns.forEach(b=>{b.disabled=false;b.textContent='Save Summary';b.style.opacity='';});
