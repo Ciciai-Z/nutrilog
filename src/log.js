@@ -419,7 +419,7 @@ function renderMealSection(mealType,entries) {
       <div class="meal-section__header">
         <div class="meal-section__header-left">
           <div class="meal-icon-circle">${meta.emoji}</div>
-          <span class="meal-section__name">${mealType}</span>
+          <span class="meal-section__name" style="font-size:var(--text-base)">${mealType}</span>
         </div>
         <div class="meal-section__macros">
           <span class="meal-section__macro-item">🔥<strong>${Math.round(secCals)}</strong>kcal</span>
@@ -507,7 +507,7 @@ function handleAmountEdit(btn) {
   // Replace badge with input
   btn.innerHTML = `<input class="entry-amount-input" type="number" value="${oldAmt}"
     min="1" step="1" inputmode="decimal"
-    style="width:52px;text-align:right;font-size:16px;border:none;background:transparent;outline:none;font-family:inherit;">`;
+    style="width:52px;text-align:right;font-size:16px;border:none;background:#fff;color:#111;border-radius:4px;padding:1px 3px;outline:none;font-family:inherit;">`;
   const input = btn.querySelector('input');
   input.focus(); input.select();
 
@@ -558,7 +558,7 @@ function handleAmountEdit(btn) {
           potassium: Math.round((e.potassium || 0) * ratio),
         };
       }
-      invalidateLogCache(date);
+      // Do NOT invalidateLogCache here — we already updated store in-memory above
       renderLog(date, store.state.dailyLog[date]);
     } catch (err) {
       console.error('[log] handleUpdate:', err);

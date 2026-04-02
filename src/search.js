@@ -3,6 +3,7 @@
 // Fixed: iOS keyboard toolbar suppressed (type=text + inputmode=search)
 //        Processing overlay on Add button
 //        Dynamic nutrition preview in add sheet
+//        Favourites Add → full-page overlay during processing
 // ============================================================
 import { CONFIG } from '../config.js';
 import { getFavourites, toggleFavourite, addLogEntry } from './api.js';
@@ -12,6 +13,24 @@ import { calcCalories, today } from './utils.js';
 import { invalidateLogCache, renderSidebarSummary } from './log.js';
 
 let selectedMealType = CONFIG.labels.mealTypes[0];
+
+// ── Shared overlay helper (mirrors log.js setPageBusy) ────────
+function setPageBusy(busy) {
+  const OVERLAY_ID = 'log-busy-overlay';
+  if (busy) {
+    if (document.getElementById(OVERLAY_ID)) return;
+    const overlay = document.createElement('div');
+    overlay.id = OVERLAY_ID;
+    overlay.style.cssText = [
+      'position:fixed', 'inset:0', 'z-index:8888',
+      'background:rgba(242,239,233,0.45)',
+      'cursor:wait', 'pointer-events:all',
+    ].join(';');
+    document.body.appendChild(overlay);
+  } else {
+    document.getElementById(OVERLAY_ID)?.remove();
+  }
+}
 
 // ── Data loading ──────────────────────────────────────────────
 export async function ensureFoodsLoaded() {
@@ -221,9 +240,11 @@ async function handleFavAdd(row, no) {
   const mealType=mealSel?.value||'Breakfast';
   if(!amount||amount<=0){showToast('Enter a valid amount','error');return;}
 
-  // Processing state — disable entire expand panel
+  // Processing: overlay blocks entire page + disable local controls
+  setPageBusy(true);
   if(addBtn){addBtn.disabled=true;addBtn.textContent='Adding…';}
-  if(amtInput)amtInput.disabled=true;if(mealSel)mealSel.disabled=true;
+  if(amtInput)amtInput.disabled=true;
+  if(mealSel)mealSel.disabled=true;
 
   try{
     const date=store.state.currentDate||today(),ratio=amount/(food.amount||100);
@@ -234,14 +255,20 @@ async function handleFavAdd(row, no) {
       sodium:Math.round((food.sodium||0)*ratio),potassium:Math.round((food.potassium||0)*ratio),
     });
     if(!store.state.lastAmounts)store.state.lastAmounts={};store.state.lastAmounts[no]=amount;
-    invalidateLogCache(date);const{getDailyLog}=await import('./api.js');store.state.dailyLog[date]=await getDailyLog(date);
+    invalidateLogCache(date);
+    const{getDailyLog}=await import('./api.js');
+    store.state.dailyLog[date]=await getDailyLog(date);
     renderSidebarSummary(store.state.dailyLog[date]);
     row.classList.remove('favs-row--selected');
     showToast(`${food.name} added ✓`,'success');
-  }catch(err){console.error('[search] handleFavAdd:',err);showToast('Failed to add','error');}
-  finally{
+  }catch(err){
+    console.error('[search] handleFavAdd:',err);
+    showToast('Failed to add','error');
+  }finally{
+    setPageBusy(false);
     if(addBtn){addBtn.disabled=false;addBtn.textContent='+ Add';}
-    if(amtInput)amtInput.disabled=false;if(mealSel)mealSel.disabled=false;
+    if(amtInput)amtInput.disabled=false;
+    if(mealSel)mealSel.disabled=false;
   }
 }
 
