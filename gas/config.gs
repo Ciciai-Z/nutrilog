@@ -92,5 +92,21 @@ const CONFIG = {
 
     // Favourites
     favourites: { no: 0 },
+
+    // Meals — DATE(A)|MEAL_NO(B)|NAME(C)|FOOD(D)|AMOUNT(E)|UNIT(F)|CALORIES(G)|PROTEIN(H)|CARBS(I)|FAT(J)|FIBRE(K)|CREATED_DATETIME(L)
+    meals: {
+      date:            0,   // A - created date
+      mealNo:          1,   // B
+      name:            2,   // C - meal template name
+      food:            3,   // D - food item name
+      amount:          4,   // E
+      unit:            5,   // F
+      calories:        6,   // G
+      protein:         7,   // H
+      carbs:           8,   // I
+      fat:             9,   // J
+      fibre:           10,  // K
+      createdDatetime: 11,  // L
+    },
   },
 };

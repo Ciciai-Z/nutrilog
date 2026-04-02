@@ -82,3 +82,19 @@ export async function syncDailySummary(date) {
 export async function addQuickAdd(entry) {
   return (await jsonpFetch('addQuickAdd', entry)).data;
 }
+
+// ── B8 Meals ──────────────────────────────────────────────────
+export async function getMeals() {
+  return (await jsonpFetch('getMeals')).data;
+}
+export async function saveMeal(meal) {
+  return (await jsonpFetch('saveMeal', meal)).data;
+}
+export async function deleteMeal(mealNo) {
+  return (await jsonpFetch('deleteMeal', { mealNo })).data;
+}
+
+// ── B9 History ────────────────────────────────────────────────
+export async function getHistory() {
+  return (await jsonpFetch('getHistory', null, null, 30000)).data;
+}

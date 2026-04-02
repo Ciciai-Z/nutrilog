@@ -1,6 +1,6 @@
 // ============================================================
 // auth.js — PIN login
-// Fixed: processing state during PIN verify, loading indicator
+// B8/B9: auto-logout after 5 min inactivity
 // ============================================================
 import { sha256 } from './utils.js';
 import { verifyPin } from './api.js';
@@ -9,7 +9,33 @@ import { showToast } from './ui.js';
 
 export function isLoggedIn() { return !!store.getToken(); }
 
+// ── Auto-logout timer ─────────────────────────────────────────
+const IDLE_MS = 5 * 60 * 1000; // 5 minutes
+let _idleTimer = null;
+
+export function resetIdleTimer() {
+  clearTimeout(_idleTimer);
+  _idleTimer = setTimeout(() => {
+    if (store.getToken()) {
+      console.log('[auth] idle timeout → logout');
+      logout();
+      showToast('Session expired — please log in again', 'error');
+    }
+  }, IDLE_MS);
+}
+
+export function startIdleWatcher() {
+  ['mousemove','mousedown','keydown','touchstart','scroll','click'].forEach(ev =>
+    document.addEventListener(ev, resetIdleTimer, { passive: true }));
+  resetIdleTimer();
+}
+
+export function stopIdleWatcher() {
+  clearTimeout(_idleTimer);
+}
+
 export function renderAuthScreen() {
+  // Dim entire page before showing auth card (for re-login flow)
   const app = document.getElementById('app');
   app.innerHTML = `
     <div class="auth-screen">
@@ -30,7 +56,6 @@ export function renderAuthScreen() {
             <button class="pin-key ${k===''?'pin-key--empty':''}" data-key="${k}">${k}</button>`).join('')}
         </div>
         <p class="auth-error" id="auth-error"></p>
-        <!-- Processing indicator (hidden by default) -->
         <p class="auth-processing" id="auth-processing" style="display:none">Verifying…</p>
       </div>
     </div>`;
@@ -61,30 +86,35 @@ function updatePinDisplay() {
 }
 
 async function submitPin() {
-  const keypad    = document.getElementById('pin-keypad');
-  const errorEl   = document.getElementById('auth-error');
+  const keypad       = document.getElementById('pin-keypad');
+  const errorEl      = document.getElementById('auth-error');
   const processingEl = document.getElementById('auth-processing');
+  const display      = document.getElementById('pin-display');
+
+  // Grey out entire auth card during verification
+  const card = document.querySelector('.auth-card');
+  if (card) card.style.opacity = '0.6';
   keypad.style.pointerEvents = 'none';
   errorEl.textContent = '';
   if (processingEl) processingEl.style.display = 'block';
-  // Dim the dot display to indicate processing
-  const display = document.getElementById('pin-display');
   if (display) display.style.opacity = '0.5';
+
   try {
     const hash   = await sha256(pinBuffer);
     const result = await verifyPin(hash);
     store.setToken(result.token);
     console.log('[auth] verifyPin → success');
+    startIdleWatcher();
     window.dispatchEvent(new CustomEvent('nutrilog:login'));
   } catch (ex) {
     console.log('[auth] verifyPin → failed');
+    if (card) card.style.opacity = '';
     if (errorEl) errorEl.textContent = 'Incorrect PIN. Try again.';
     pinBuffer = '';
     updatePinDisplay();
     keypad.style.pointerEvents = '';
     if (processingEl) processingEl.style.display = 'none';
     if (display) display.style.opacity = '';
-    // Shake animation
     if (display) {
       display.classList.add('pin-display--shake');
       setTimeout(() => display.classList.remove('pin-display--shake'), 500);
@@ -93,6 +123,7 @@ async function submitPin() {
 }
 
 export function logout() {
+  stopIdleWatcher();
   store.clearToken();
   renderAuthScreen();
 }

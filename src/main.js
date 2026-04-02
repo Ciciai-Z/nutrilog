@@ -2,7 +2,7 @@
 // main.js — Router
 // Fixed: date picker JS click (Safari compat), short mobile format
 // ============================================================
-import { isLoggedIn, renderAuthScreen, logout } from './auth.js';
+import { isLoggedIn, renderAuthScreen, logout, startIdleWatcher } from './auth.js';
 import { store } from './store.js';
 import { getSettings } from './api.js';
 import { today, formatDate, parseDate } from './utils.js';
@@ -175,8 +175,8 @@ export async function navigateTo(tab) {
   switch (tab) {
     case 'today':      content.innerHTML='<div id="view-today" class="page"></div>'; await initLog(false); break;
     case 'favourites': content.innerHTML='<div id="view-favourites" class="page"></div>'; await initFavourites(false); break;
-    case 'meals':      content.innerHTML=placeholderPage('Meals','🍽','Meal templates coming in B8'); break;
-    case 'history':    content.innerHTML=placeholderPage('History','📅','History coming in B9'); break;
+    case 'meals':      content.innerHTML='<div id="view-meals" class="page"></div>'; await import('./meals.js').then(m=>m.initMeals(false)); break;
+    case 'history':    content.innerHTML='<div id="view-history" class="page"></div>'; await import('./history.js').then(m=>m.initHistory()); break;
     case 'settings':   content.innerHTML='<div id="view-settings" class="page"></div>'; initSettings(); break;
     default:           content.innerHTML=placeholderPage(tab,'🔧',`${tab} coming soon`);
   }
@@ -201,7 +201,7 @@ async function renderWithSidebar(tab, content) {
   switch (tab) {
     case 'today':      left.innerHTML='<div id="view-today" class="page"></div>'; await initLog(true); break;
     case 'favourites': left.innerHTML='<div id="view-favourites" class="page"></div>'; renderSidebarSummary(); await initFavourites(true); break;
-    case 'meals':      left.innerHTML=placeholderPage('Meals','🍽','Meal templates coming in B8'); renderSidebarSummary(); break;
+    case 'meals':      left.innerHTML='<div id="view-meals" class="page"></div>'; renderSidebarSummary(); await import('./meals.js').then(m=>m.initMeals(true)); break;
   }
 }
 
@@ -224,19 +224,11 @@ async function onLogin() {
   try { const s=await getSettings(); store.setSettings(s); console.log('[main] settings loaded'); }
   catch(ex){console.error('[main] settings failed:',ex.message);}
   renderAppShell();
-  // Preload foods, favourites, and today's log in parallel
-  // so initLog finds everything already in store and skips waiting
   Promise.all([
     import('./search.js').then(m=>m.ensureFoodsLoaded()),
     import('./search.js').then(m=>m.ensureFavouritesLoaded?.()),
-    import('./api.js').then(({ getDailyLog }) =>
-      getDailyLog(today()).then(entries => {
-        if (!store.state.dailyLog) store.state.dailyLog = {};
-        store.state.dailyLog[today()] = entries;
-      })
-    ),
   ]).catch(err=>console.warn('[main] preload:',err.message));
 }
 
 window.addEventListener('nutrilog:login', onLogin);
-if (isLoggedIn()) { onLogin(); } else { renderAuthScreen(); }
+if (isLoggedIn()) { startIdleWatcher(); onLogin(); } else { renderAuthScreen(); }

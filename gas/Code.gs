@@ -29,6 +29,10 @@ function route(action, params) {
     case 'updateLogEntry':  return updateLogEntry(params);
     case 'syncDailySummary':return syncDailySummary(params);
     case 'addQuickAdd':     return addQuickAdd(params);
+    case 'getMeals':        return getMeals(params);
+    case 'saveMeal':        return saveMeal(params);
+    case 'deleteMeal':      return deleteMeal(params);
+    case 'getHistory':      return getHistory(params);
     default: return { ok: false, error: `Unknown action: ${action}` };
   }
 }
@@ -286,7 +290,7 @@ function deleteLogEntry(params) {
   const CL     = CONFIG.columns.dailyLog;
   const foodNo = logRow[CL.foodNo] ? Number(logRow[CL.foodNo]) : null;
 
-  // B6: cascade-delete CustomFoods row if IS_QUICK_ADD = TRUE
+  // B6: cascade-delete CustomFoods + Favourites if IS_QUICK_ADD = TRUE
   if (foodNo && foodNo >= 50001) {
     const cfSh   = getSheet(CONFIG.sheets.customFoods);
     const cfRows = cfSh.getDataRange().getValues();
@@ -294,7 +298,15 @@ function deleteLogEntry(params) {
     for (let i = 1; i < cfRows.length; i++) {
       if (Number(cfRows[i][CC.no]) === foodNo) {
         const isQA = cfRows[i][CC.isQuickAdd] === true || cfRows[i][CC.isQuickAdd] === 'TRUE';
-        if (isQA) cfSh.deleteRow(i + 1);
+        if (isQA) {
+          cfSh.deleteRow(i + 1);
+          // Also remove from Favourites if starred
+          const favSh   = getSheet(CONFIG.sheets.favourites);
+          const favRows = favSh.getDataRange().getValues();
+          for (let j = 1; j < favRows.length; j++) {
+            if (Number(favRows[j][0]) === foodNo) { favSh.deleteRow(j + 1); break; }
+          }
+        }
         break;
       }
     }
@@ -448,4 +460,121 @@ function addQuickAdd(params) {
   logSh.appendRow(logRow);
 
   return { ok: true, data: { foodNo, rowIndex: logSh.getLastRow(), calories } };
+}
+
+// ── B8: getMeals ───────────────────────────────────────────────
+function getMeals(params) {
+  if (!verifyToken(params.token || '')) return { ok: false, error: 'Unauthorized' };
+  const sh   = getSheet(CONFIG.sheets.meals);
+  const rows = sh.getDataRange().getValues();
+  if (rows.length < 2) return { ok: true, data: [] };
+  const CM = CONFIG.columns.meals;
+  const out = [];
+  for (let i = 1; i < rows.length; i++) {
+    const r = rows[i];
+    if (!r[CM.mealNo]) continue;
+    out.push({
+      mealNo:   String(r[CM.mealNo]),
+      name:     String(r[CM.name]     || ''),
+      food:     String(r[CM.food]     || ''),
+      amount:   Number(r[CM.amount]   || 0),
+      unit:     String(r[CM.unit]     || 'g'),
+      calories: Number(r[CM.calories] || 0),
+      protein:  Number(r[CM.protein]  || 0),
+      carbs:    Number(r[CM.carbs]    || 0),
+      fat:      Number(r[CM.fat]      || 0),
+      fibre:    Number(r[CM.fibre]    || 0),
+    });
+  }
+  return { ok: true, data: out };
+}
+
+// ── B8: saveMeal ───────────────────────────────────────────────
+function saveMeal(params) {
+  if (!verifyToken(params.token || '')) return { ok: false, error: 'Unauthorized' };
+  let payload;
+  try { payload = JSON.parse(decodeURIComponent(params.payload || '{}')); }
+  catch (e) { return { ok: false, error: 'Invalid payload' }; }
+  const name  = String(payload.name || '').trim();
+  const foods = payload.foods || [];
+  if (!name)         return { ok: false, error: 'Name required' };
+  if (!foods.length) return { ok: false, error: 'No foods' };
+
+  // Generate new meal number: max existing + 1, format as meal001
+  const sh   = getSheet(CONFIG.sheets.meals);
+  const rows = sh.getDataRange().getValues();
+  const CM   = CONFIG.columns.meals;
+  let maxN   = 0;
+  for (let i = 1; i < rows.length; i++) {
+    const mn = String(rows[i][CM.mealNo] || '').replace(/\D/g, '');
+    const n  = parseInt(mn) || 0;
+    if (n > maxN) maxN = n;
+  }
+  const mealNo = 'meal' + String(maxN + 1).padStart(3, '0');
+  const dt     = Utilities.formatDate(new Date(), Session.getScriptTimeZone(), "d/M/yy H:mm");
+  const date   = Utilities.formatDate(new Date(), Session.getScriptTimeZone(), "EEE,d/M/yy");
+
+  for (const f of foods) {
+    const row = new Array(12).fill('');
+    row[CM.date]            = date;
+    row[CM.mealNo]          = mealNo;
+    row[CM.name]            = name;
+    row[CM.food]            = String(f.foodName || '');
+    row[CM.amount]          = Number(f.amount)   || 0;
+    row[CM.unit]            = String(f.unit      || 'g');
+    row[CM.calories]        = Number(f.calories) || 0;
+    row[CM.protein]         = Number(f.protein)  || 0;
+    row[CM.carbs]           = Number(f.carbs)    || 0;
+    row[CM.fat]             = Number(f.fat)      || 0;
+    row[CM.fibre]           = Number(f.fibre)    || 0;
+    row[CM.createdDatetime] = dt;
+    sh.appendRow(row);
+  }
+  return { ok: true, data: { mealNo } };
+}
+
+// ── B8: deleteMeal ─────────────────────────────────────────────
+function deleteMeal(params) {
+  if (!verifyToken(params.token || '')) return { ok: false, error: 'Unauthorized' };
+  let payload;
+  try { payload = JSON.parse(decodeURIComponent(params.payload || '{}')); }
+  catch (e) { return { ok: false, error: 'Invalid payload' }; }
+  const mealNo = String(payload.mealNo || '').trim();
+  if (!mealNo) return { ok: false, error: 'Missing mealNo' };
+  const sh   = getSheet(CONFIG.sheets.meals);
+  const rows = sh.getDataRange().getValues();
+  const CM   = CONFIG.columns.meals;
+  // Delete from bottom up to avoid row index shifting
+  for (let i = rows.length - 1; i >= 1; i--) {
+    if (String(rows[i][CM.mealNo]) === mealNo) sh.deleteRow(i + 1);
+  }
+  return { ok: true, data: null };
+}
+
+// ── B9: getHistory ─────────────────────────────────────────────
+function getHistory(params) {
+  if (!verifyToken(params.token || '')) return { ok: false, error: 'Unauthorized' };
+  const sh   = getSheet(CONFIG.sheets.dailySummary);
+  const rows = sh.getDataRange().getValues();
+  const CS   = CONFIG.columns.dailySummary;
+  const out  = [];
+  // Skip header rows (rows 1 and 2)
+  for (let i = 2; i < rows.length; i++) {
+    const r = rows[i];
+    if (!r[CS.date]) continue;
+    out.push({
+      date:          String(r[CS.date]),
+      calorieTarget: Number(r[CS.calorieTarget] || 0),
+      calories:      Number(r[CS.calories]      || 0),
+      proteinTarget: Number(r[CS.proteinTarget]  || 0),
+      protein:       Number(r[CS.protein]        || 0),
+      carbsTarget:   Number(r[CS.carbsTarget]    || 0),
+      carbs:         Number(r[CS.carbs]          || 0),
+      fatTarget:     Number(r[CS.fatTarget]      || 0),
+      fat:           Number(r[CS.fat]            || 0),
+      fibreTarget:   Number(r[CS.fibreTarget]    || 0),
+      fibre:         Number(r[CS.fibre]          || 0),
+    });
+  }
+  return { ok: true, data: out };
 }
