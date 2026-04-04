@@ -175,7 +175,13 @@ export async function navigateTo(tab) {
   switch (tab) {
     case 'today':      content.innerHTML='<div id="view-today" class="page"></div>'; await initLog(false); break;
     case 'favourites': content.innerHTML='<div id="view-favourites" class="page"></div>'; await initFavourites(false); break;
-    case 'meals':      content.innerHTML='<div id="view-meals" class="page"></div>'; await import('./meals.js').then(m=>m.initMeals(false)); break;
+    case 'meals': {
+      if (!content.querySelector('#view-meals')) {
+        content.innerHTML='<div id="view-meals" class="page"></div>';
+      }
+      await import('./meals.js').then(m=>m.initMeals(false));
+      break;
+    }
     case 'history':    content.innerHTML='<div id="view-history" class="page"></div>'; await import('./history.js').then(m=>m.initHistory()); break;
     case 'settings':   content.innerHTML='<div id="view-settings" class="page"></div>'; initSettings(); break;
     default:           content.innerHTML=placeholderPage(tab,'🔧',`${tab} coming soon`);
@@ -201,7 +207,15 @@ async function renderWithSidebar(tab, content) {
   switch (tab) {
     case 'today':      left.innerHTML='<div id="view-today" class="page"></div>'; await initLog(true); break;
     case 'favourites': left.innerHTML='<div id="view-favourites" class="page"></div>'; renderSidebarSummary(); await initFavourites(true); break;
-    case 'meals':      left.innerHTML='<div id="view-meals" class="page"></div>'; renderSidebarSummary(); await import('./meals.js').then(m=>m.initMeals(true)); break;
+    case 'meals': {
+      // Only rebuild DOM if not already rendered
+      if (!left.querySelector('#view-meals')) {
+        left.innerHTML='<div id="view-meals" class="page"></div>';
+      }
+      renderSidebarSummary();
+      await import('./meals.js').then(m=>m.initMeals(true));
+      break;
+    }
   }
 }
 

@@ -515,9 +515,21 @@ async function handleToggleFav(btn) {
   const foodNo=Number(btn.dataset.foodNo);if(!foodNo){showToast('Cannot favourite this entry','error');return;}
   const fs=store.state.favourites,wasFav=fs instanceof Set?fs.has(foodNo):Array.isArray(fs)&&fs.includes(foodNo);
   if(fs instanceof Set){wasFav?fs.delete(foodNo):fs.add(foodNo);}else if(Array.isArray(fs)){store.state.favourites=wasFav?fs.filter(n=>n!==foodNo):[...fs,foodNo];}
-  btn.classList.toggle('entry-row__star-btn--active',!wasFav);
-  try{await toggleFavourite(foodNo);showToast(!wasFav?'★ Added':'Removed from favourites','success');}
-  catch(err){if(fs instanceof Set){wasFav?fs.add(foodNo):fs.delete(foodNo);}btn.classList.toggle('entry-row__star-btn--active',wasFav);console.error('[log] toggleFav:',err);}
+  // Update all star buttons for this foodNo on the page (covers both Mac+iPhone)
+  const nowFav = !wasFav;
+  document.querySelectorAll(`.entry-row__star-btn[data-food-no="${foodNo}"]`).forEach(b=>{
+    b.classList.toggle('entry-row__star-btn--active', nowFav);
+  });
+  try{await toggleFavourite(foodNo);showToast(nowFav?'★ Added':'Removed from favourites','success');}
+  catch(err){
+    // Revert store and DOM on failure
+    if(fs instanceof Set){nowFav?fs.delete(foodNo):fs.add(foodNo);}
+    else if(Array.isArray(fs)){store.state.favourites=nowFav?fs.filter(n=>n!==foodNo):[...fs,foodNo];}
+    document.querySelectorAll(`.entry-row__star-btn[data-food-no="${foodNo}"]`).forEach(b=>{
+      b.classList.toggle('entry-row__star-btn--active', wasFav);
+    });
+    console.error('[log] toggleFav:',err);
+  }
 }
 
 // ── Amount edit — Bug1+Bug1b+Bug3 fix ─────────────────────────

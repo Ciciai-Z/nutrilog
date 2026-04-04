@@ -1,17 +1,29 @@
 // ============================================================
-// search.js — Food Search + Favourites
-// Fixed: iOS keyboard toolbar suppressed (type=text + inputmode=search)
-//        Processing overlay on Add button
-//        Dynamic nutrition preview in add sheet
+// search.js — Food Search + Favourites + Quick Add
+// Fixed: overlay busy, confirmAddFood re-fetch, Quick Add sheet
 // ============================================================
 import { CONFIG } from '../config.js';
-import { getFavourites, toggleFavourite, addLogEntry } from './api.js';
+import { getFavourites, toggleFavourite, addLogEntry, addQuickAdd, getDailyLog } from './api.js';
 import { store } from './store.js';
 import { showToast } from './ui.js';
 import { calcCalories, today } from './utils.js';
-import { invalidateLogCache, renderSidebarSummary } from './log.js';
+import { invalidateLogCache, renderSidebarSummary, refreshLog } from './log.js';
 
 let selectedMealType = CONFIG.labels.mealTypes[0];
+
+// ── Shared overlay (mirrors log.js setPageBusy) ───────────────
+function setPageBusy(busy) {
+  const ID = 'log-busy-overlay';
+  if (busy) {
+    if (document.getElementById(ID)) return;
+    const o = document.createElement('div');
+    o.id = ID;
+    o.style.cssText = 'position:fixed;inset:0;z-index:8888;background:rgba(242,239,233,0.45);cursor:wait;pointer-events:all';
+    document.body.appendChild(o);
+  } else {
+    document.getElementById(ID)?.remove();
+  }
+}
 
 // ── Data loading ──────────────────────────────────────────────
 export async function ensureFoodsLoaded() {
@@ -39,11 +51,9 @@ export async function ensureFavouritesLoaded() {
 }
 
 // ── iPhone bottom-sheet search ────────────────────────────────
-// Using type="text" + inputmode="search" to suppress iOS ‹ › ✓ toolbar
 export async function openSearchSheet() {
   await ensureFoodsLoaded();
   await ensureFavouritesLoaded();
-
   document.getElementById('mobile-search-sheet')?.remove();
   const sheet = document.createElement('div');
   sheet.id = 'mobile-search-sheet';
@@ -51,20 +61,24 @@ export async function openSearchSheet() {
   sheet.innerHTML = `
     <div class="bottom-sheet__backdrop"></div>
     <div class="bottom-sheet__panel" style="padding:12px 14px 40px;max-height:85vh">
-      <input id="mobile-sheet-input" class="search-input"
-        type="text"
-        inputmode="search"
-        enterkeyhint="search"
-        placeholder="Search foods…"
-        autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false"
-        style="margin-bottom:8px;font-size:16px">
+      <div style="display:flex;gap:8px;margin-bottom:8px;align-items:center">
+        <input id="mobile-sheet-input" class="search-input"
+          type="text" inputmode="search" enterkeyhint="search"
+          placeholder="Search foods…"
+          autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false"
+          style="flex:1;font-size:16px;margin-bottom:0">
+        <button id="mobile-quick-add-btn" class="btn btn--ghost"
+          style="white-space:nowrap;font-size:14px;padding:8px 12px;flex-shrink:0">⚡ Quick Add</button>
+      </div>
       <div id="mobile-sheet-results" class="search-results"
         style="max-height:60vh;overflow-y:auto;padding:0"></div>
     </div>`;
   document.body.appendChild(sheet);
   requestAnimationFrame(() => sheet.classList.add('bottom-sheet--visible'));
   sheet.querySelector('.bottom-sheet__backdrop').addEventListener('click', closeMobileSheet);
-
+  sheet.querySelector('#mobile-quick-add-btn').addEventListener('click', () => {
+    closeMobileSheet(); openQuickAddSheet();
+  });
   const input = document.getElementById('mobile-sheet-input');
   setTimeout(() => input?.focus(), 80);
   input?.addEventListener('input', () => runSheetSearch(input.value));
@@ -79,9 +93,9 @@ function closeMobileSheet() {
 }
 
 async function runSheetSearch(rawQuery) {
-  const q     = rawQuery.trim().toLowerCase();
-  const foods = store.state.foods || [];
-  const favSet= store.state.favourites || new Set();
+  const q      = rawQuery.trim().toLowerCase();
+  const foods  = store.state.foods || [];
+  const favSet = store.state.favourites || new Set();
   let filtered = !q
     ? foods.filter(f => favSet.has(f.no))
     : foods.filter(f => f.name.toLowerCase().includes(q));
@@ -99,6 +113,110 @@ async function runSheetSearch(rawQuery) {
     row.querySelector('.result-info')?.addEventListener('click', () => { closeMobileSheet(); openAddSheet(no); });
     row.querySelector('.fav-btn')?.addEventListener('click', e => { e.stopPropagation(); handleToggleFavourite(no, row); });
   });
+}
+
+// ── B6: Quick Add sheet ───────────────────────────────────────
+export function openQuickAddSheet() {
+  document.getElementById('quick-add-sheet')?.remove();
+  const sheet = document.createElement('div');
+  sheet.id = 'quick-add-sheet';
+  sheet.className = 'bottom-sheet';
+  const options = CONFIG.labels.mealTypes.map(t => `<option>${t}</option>`).join('');
+  const numField = (id, label, required = false) => `
+    <div>
+      <label class="sheet-label">${label}${required?' *':''}</label>
+      <input id="${id}" class="sheet-input" type="number"
+        min="0" max="3000" step="0.1"
+        placeholder="${required?'required':'0'}"
+        inputmode="decimal" style="font-size:var(--text-md)">
+    </div>`;
+  sheet.innerHTML = `
+    <div class="bottom-sheet__backdrop"></div>
+    <div class="bottom-sheet__panel">
+      <div class="bottom-sheet__header">
+        <span class="bottom-sheet__title">⚡ Quick Add</span>
+        <span class="bottom-sheet__sub">Enter nutrition values directly</span>
+      </div>
+      <div class="bottom-sheet__body" style="display:flex;flex-direction:column;gap:10px">
+        <div>
+          <label class="sheet-label">Name *</label>
+          <input id="qa-name" class="sheet-input" type="text"
+            placeholder="e.g. Restaurant noodles"
+            autocomplete="off" style="font-size:var(--text-md)">
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+          ${numField('qa-calories','Calories (kcal)',true)}
+          ${numField('qa-protein','Protein (g)')}
+          ${numField('qa-carbs','Carbs (g)')}
+          ${numField('qa-fat','Fat (g)')}
+          ${numField('qa-fibre','Fibre (g)')}
+          <div>
+            <label class="sheet-label">Meal</label>
+            <select id="qa-meal" class="sheet-select" style="font-size:var(--text-md)">${options}</select>
+          </div>
+        </div>
+      </div>
+      <div class="bottom-sheet__footer">
+        <button id="qa-cancel" class="btn btn--ghost">Cancel</button>
+        <button id="qa-confirm" class="btn btn--primary">Add to Log</button>
+      </div>
+    </div>`;
+  document.body.appendChild(sheet);
+  requestAnimationFrame(() => sheet.classList.add('bottom-sheet--visible'));
+  const closeQA = () => { sheet.classList.remove('bottom-sheet--visible'); setTimeout(() => sheet.remove(), 250); };
+  sheet.querySelector('.bottom-sheet__backdrop').addEventListener('click', closeQA);
+  sheet.querySelector('#qa-cancel').addEventListener('click', closeQA);
+  // Clamp to 1 decimal + max 3000
+  sheet.querySelectorAll('input[type="number"]').forEach(inp => {
+    inp.addEventListener('blur', () => {
+      let v = parseFloat(inp.value);
+      if (isNaN(v) || v < 0) { inp.value = ''; return; }
+      if (v > 3000) v = 3000;
+      inp.value = Math.round(v * 10) / 10;
+    });
+  });
+  sheet.querySelector('#qa-confirm').addEventListener('click', () => confirmQuickAdd(sheet, closeQA));
+}
+
+async function confirmQuickAdd(sheet, closeQA) {
+  const name = sheet.querySelector('#qa-name').value.trim();
+  if (!name) { showToast('Name is required','error'); sheet.querySelector('#qa-name').focus(); return; }
+  const calories = parseFloat(sheet.querySelector('#qa-calories').value);
+  if (!calories || calories <= 0) { showToast('Calories is required','error'); sheet.querySelector('#qa-calories').focus(); return; }
+  const clamp = v => Math.min(Math.max(Math.round((parseFloat(v)||0)*10)/10, 0), 3000);
+  const protein  = clamp(sheet.querySelector('#qa-protein').value);
+  const carbs    = clamp(sheet.querySelector('#qa-carbs').value);
+  const fat      = clamp(sheet.querySelector('#qa-fat').value);
+  const fibre    = clamp(sheet.querySelector('#qa-fibre').value);
+  const mealType = sheet.querySelector('#qa-meal').value || 'Other';
+  const calsClamped = Math.min(Math.round(calories), 3000);
+  const confirmBtn = sheet.querySelector('#qa-confirm');
+  const cancelBtn  = sheet.querySelector('#qa-cancel');
+  confirmBtn.disabled = true; confirmBtn.textContent = 'Adding…';
+  cancelBtn.disabled  = true;
+  setPageBusy(true);
+  try {
+    const date = store.state.currentDate || today();
+    const result = await addQuickAdd({ date, mealType, name, calories: calsClamped, protein, carbs, fat, fibre });
+    if (!store.state.foods) store.state.foods = [];
+    const newFood = { no: result.foodNo, name, amount: 1, unit: 'serving',
+      calories: result.calories, protein, carbs, fat, fibre, sodium: 0, potassium: 0,
+      category: 'Custom', isCustom: true, isQuickAdd: true };
+    if (!store.state.foods.find(f => f.no === result.foodNo)) store.state.foods.push(newFood);
+    invalidateLogCache(date);
+    store.state.dailyLog[date] = await getDailyLog(date);
+    if (refreshLog) refreshLog(date);
+    renderSidebarSummary(store.state.dailyLog[date]);
+    showToast(`${name} added ✓`,'success');
+    closeQA();
+  } catch (err) {
+    console.error('[search] confirmQuickAdd:', err);
+    showToast('Failed to add — please try again','error');
+    confirmBtn.disabled = false; confirmBtn.textContent = 'Add to Log';
+    cancelBtn.disabled  = false;
+  } finally {
+    setPageBusy(false);
+  }
 }
 
 // ── Favourites page ───────────────────────────────────────────
@@ -123,7 +241,7 @@ function renderFavouritesPage() {
   view.innerHTML = `
     <div class="favs-page">
       <div class="favs-page-header">
-        <h2 style="font-family:var(--font-serif);font-size:var(--text-xl);font-weight:400;font-style:italic;color:var(--color-text-primary)">Favourites</h2>
+        <h2 style="font-family:var(--font-sans);font-size:var(--text-lg);font-weight:500;color:var(--color-text-primary)">Favourites</h2>
         <span class="favs-hint">Click to add · ★ to unfavourite</span>
       </div>
       ${favFoods.length===0 ? '<p class="search-empty" style="margin-top:40px">No favourites yet — star foods in Search</p>' : groupsHTML}
@@ -193,6 +311,10 @@ async function removeFavourite(foodNo, rowEl) {
   rowEl.style.transition='opacity 0.2s,max-height 0.25s';rowEl.style.opacity='0';rowEl.style.maxHeight=rowEl.offsetHeight+'px';
   setTimeout(()=>{rowEl.style.maxHeight='0';rowEl.style.overflow='hidden';},10);
   setTimeout(()=>{rowEl.remove();const rem=(store.state.foods||[]).filter(f=>{const s=store.state.favourites;return s instanceof Set?s.has(f.no):Array.isArray(s)&&s.includes(f.no);});if(rem.length===0)renderFavouritesPage();},260);
+  // Also update any star buttons on the Today log page
+  document.querySelectorAll(`.entry-row__star-btn[data-food-no="${foodNo}"]`).forEach(b => {
+    b.classList.remove('entry-row__star-btn--active');
+  });
   try{await toggleFavourite(foodNo);showToast('Removed from favourites','success');}
   catch(err){console.error('[search] removeFavourite:',err);showToast('Failed to update','error');renderFavouritesPage();}
 }
@@ -220,11 +342,10 @@ async function handleFavAdd(row, no) {
   const amount=parseFloat(amtInput?.value)||food.amount;
   const mealType=mealSel?.value||'Breakfast';
   if(!amount||amount<=0){showToast('Enter a valid amount','error');return;}
-
-  // Processing state — disable entire expand panel
+  setPageBusy(true);
   if(addBtn){addBtn.disabled=true;addBtn.textContent='Adding…';}
-  if(amtInput)amtInput.disabled=true;if(mealSel)mealSel.disabled=true;
-
+  if(amtInput)amtInput.disabled=true;
+  if(mealSel)mealSel.disabled=true;
   try{
     const date=store.state.currentDate||today(),ratio=amount/(food.amount||100);
     await addLogEntry({date,mealType,foodNo:food.no,name:food.name,amount,unit:food.unit,
@@ -234,12 +355,15 @@ async function handleFavAdd(row, no) {
       sodium:Math.round((food.sodium||0)*ratio),potassium:Math.round((food.potassium||0)*ratio),
     });
     if(!store.state.lastAmounts)store.state.lastAmounts={};store.state.lastAmounts[no]=amount;
-    invalidateLogCache(date);const{getDailyLog}=await import('./api.js');store.state.dailyLog[date]=await getDailyLog(date);
+    invalidateLogCache(date);
+    store.state.dailyLog[date] = await getDailyLog(date);
+    if (refreshLog) refreshLog(date);
     renderSidebarSummary(store.state.dailyLog[date]);
     row.classList.remove('favs-row--selected');
     showToast(`${food.name} added ✓`,'success');
   }catch(err){console.error('[search] handleFavAdd:',err);showToast('Failed to add','error');}
   finally{
+    setPageBusy(false);
     if(addBtn){addBtn.disabled=false;addBtn.textContent='+ Add';}
     if(amtInput)amtInput.disabled=false;if(mealSel)mealSel.disabled=false;
   }
@@ -267,7 +391,7 @@ function highlightMatch(name, q) {
   return escHtml(name.slice(0,idx))+`<mark class="search-highlight">${escHtml(name.slice(idx,idx+q.length))}</mark>`+escHtml(name.slice(idx+q.length));
 }
 
-// ── Add sheet (iPhone) with dynamic preview + processing state ─
+// ── Add sheet (iPhone) ────────────────────────────────────────
 function openAddSheet(foodNo) {
   const food=(store.state.foods||[]).find(f=>f.no===foodNo);if(!food)return;
   document.getElementById('add-food-sheet')?.remove();
@@ -320,8 +444,7 @@ function buildPreviewChips(food, amount) {
 
 function updateAddSheetPreview(food,amtInput,preview) {
   if(!preview)return;
-  const amount=parseFloat(amtInput.value)||0;
-  preview.innerHTML=buildPreviewChips(food,amount);
+  preview.innerHTML=buildPreviewChips(food,parseFloat(amtInput.value)||0);
 }
 
 function closeAddSheet() {
@@ -337,12 +460,9 @@ async function confirmAddFood(food, sheet) {
   selectedMealType=mealType;
   const confirmBtn=sheet.querySelector('#add-sheet-confirm');
   const cancelBtn=sheet.querySelector('#add-sheet-cancel');
-
-  // Processing state
   if(confirmBtn){confirmBtn.disabled=true;confirmBtn.textContent='Adding…';}
   if(cancelBtn)cancelBtn.disabled=true;
   if(amountInput)amountInput.disabled=true;if(mealSelect)mealSelect.disabled=true;
-
   const ratio=amount/food.amount;const date=store.state.currentDate||today();
   const entry={date,mealType,foodNo:food.no,name:food.name,amount,unit:food.unit,
     calories:Math.round(calcCalories(food.protein,food.carbs,food.fat)*ratio),
@@ -353,13 +473,11 @@ async function confirmAddFood(food, sheet) {
   try{
     await addLogEntry(entry);
     if(!store.state.lastAmounts)store.state.lastAmounts={};store.state.lastAmounts[food.no]=amount;
-    // Bug3 fix: re-fetch log and re-render so meal section totals update immediately
+    // Re-fetch and re-render so meal section totals update immediately
     invalidateLogCache(date);
-    const { getDailyLog } = await import('./api.js');
     store.state.dailyLog[date] = await getDailyLog(date);
-    const logMod = await import('./log.js');
-    if (logMod.refreshLog) logMod.refreshLog(date);
-    logMod.renderSidebarSummary?.(store.state.dailyLog[date]);
+    if (refreshLog) refreshLog(date);
+    renderSidebarSummary(store.state.dailyLog[date]);
     showToast(`Added ${food.name} ✓`,'success');
     closeAddSheet();
   }catch(err){
@@ -373,6 +491,10 @@ async function confirmAddFood(food, sheet) {
 async function handleToggleFavourite(foodNo, rowEl) {
   const favSet=store.state.favourites;const wasFav=favSet.has(foodNo);
   wasFav?favSet.delete(foodNo):favSet.add(foodNo);updateFavBtn(rowEl,!wasFav);
+  // Update Today log star buttons for this food
+  document.querySelectorAll(`.entry-row__star-btn[data-food-no="${foodNo}"]`).forEach(b=>{
+    b.classList.toggle('entry-row__star-btn--active', !wasFav);
+  });
   try{const result=await toggleFavourite(foodNo);showToast(result.added?'Added to favourites ★':'Removed from favourites','success');}
   catch(err){wasFav?favSet.add(foodNo):favSet.delete(foodNo);updateFavBtn(rowEl,wasFav);console.error('[search] handleToggleFavourite:',err);}
 }
