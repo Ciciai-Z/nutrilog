@@ -7,6 +7,12 @@ import { CONFIG } from '../config.js';
 import { store } from './store.js';
 import { showToast } from './ui.js';
 import { today } from './utils.js';
+import {
+  getMeals, saveMeal, deleteMeal,
+  deleteFoodFromMeal, addFoodToMeal,
+  addLogEntry, getDailyLog,
+} from './api.js';
+import { invalidateLogCache, renderSidebarSummary } from './log.js';
 
 const MEAL_EMOJI = { Breakfast:'☀️', Lunch:'🌿', Dinner:'🌙', Snacks:'🍓', Other:'📦' };
 
@@ -33,7 +39,6 @@ export async function initMeals(macMode = false) {
 async function loadMeals(force = false) {
   try {
     if (store.state.meals && !force) { renderMealsList(store.state.meals); return; }
-    const { getMeals } = await import('./api.js');
     const rows = await getMeals();
     store.state.meals = rows;
     renderMealsList(rows);
@@ -185,7 +190,6 @@ function bindMealCardEvents(container) {
 async function handleDeleteFoodFromMeal(mealNo, foodName, btn) {
   btn.disabled = true;
   try {
-    const { deleteFoodFromMeal } = await import('./api.js');
     await deleteFoodFromMeal(mealNo, foodName);
     store.state.meals = null;
     await loadMeals(true);
@@ -206,7 +210,6 @@ async function handleAddFoodToMeal(mealNo, food) {
   const group = groups.find(g => g.mealNo === mealNo);
   if (!group) return;
   try {
-    const { addFoodToMeal } = await import('./api.js');
     await addFoodToMeal(mealNo, group.name, food);
     store.state.meals = null;
     await loadMeals(true);
@@ -360,7 +363,6 @@ function openCreateMealModal() {
     const saveBtn = modal.querySelector('#cm-save');
     saveBtn.disabled = true; saveBtn.textContent = 'Saving…';
     try {
-      const { saveMeal } = await import('./api.js');
       await saveMeal({ name, foods: selectedFoods.map(({food, amount}) => ({
         foodNo: food.no, foodName: food.name, amount, unit: food.unit,
         calories: Math.round((food.calories||0) * amount / (food.amount||100)),
@@ -431,7 +433,6 @@ async function confirmAddToLog(modal, group) {
   cancelBtn.disabled  = true;
 
   try {
-    const { addLogEntry, getDailyLog } = await import('./api.js');
     const date = store.state.currentDate || today();
     for (const f of group.foods) {
       await addLogEntry({
@@ -449,10 +450,8 @@ async function confirmAddToLog(modal, group) {
         potassium: Number(f.potassium) || 0,
       });
     }
-    const { invalidateLogCache } = await import('./log.js');
     invalidateLogCache(date);
     store.state.dailyLog[date] = await getDailyLog(date);
-    const { renderSidebarSummary } = await import('./log.js');
     renderSidebarSummary(store.state.dailyLog[date]);
     showToast(`${group.name} added to ${mealType} ✓`, 'success');
     modal.remove();
@@ -469,7 +468,6 @@ async function handleDeleteMeal(mealNo, btn) {
   if (!confirm('Delete this meal template?')) return;
   btn.disabled = true;
   try {
-    const { deleteMeal } = await import('./api.js');
     await deleteMeal(mealNo);
     store.state.meals = null;
     showToast('Meal deleted', 'success');
