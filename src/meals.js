@@ -85,7 +85,7 @@ function renderMealCard(group) {
   const foodRows = group.foods.map(f => `
     <div class="meals-food-row" data-meal-no="${escHtml(group.mealNo)}" data-food-name="${escHtml(f.food)}">
       <span class="meals-food-row__name">${escHtml(f.food)}</span>
-      <span class="meals-food-row__amount">${f.amount}${f.unit}</span>
+      <button class="meals-food-row__amt-badge" data-meal-no="${escHtml(group.mealNo)}" data-food-name="${escHtml(f.food)}" data-amount="${f.amount}" data-unit="${escHtml(f.unit)}">${f.amount}${f.unit}</button>
       <span class="meals-food-row__cal">${Math.round(Number(f.calories)||0)} kcal</span>
       <button class="meals-food-row__del" data-meal-no="${escHtml(group.mealNo)}" data-food-name="${escHtml(f.food)}" title="Remove food">✕</button>
     </div>`).join('');
@@ -134,6 +134,67 @@ function bindMealCardEvents(container) {
       const open = expand.style.display !== 'none';
       expand.style.display = open ? 'none' : 'block';
       if (chevron) chevron.textContent = open ? '›' : '⌄';
+    });
+  });
+
+  // Amount badge click-to-edit in expand panel
+  container.querySelectorAll('.meals-food-row__amt-badge').forEach(badge => {
+    badge.addEventListener('click', () => {
+      if (badge.querySelector('input')) return;
+      const oldAmt = Number(badge.dataset.amount);
+      const unit   = badge.dataset.unit;
+      badge.innerHTML = `<input type="number" min="1" step="1" value="${oldAmt}"
+        style="width:52px;text-align:right;font-size:var(--text-base);border:none;
+               background:#fff;color:#111;border-radius:4px;padding:1px 3px;
+               outline:none;font-family:var(--font-sans);">`;
+      const inp = badge.querySelector('input');
+      inp.focus(); inp.select();
+      const confirm = async () => {
+        const newAmt = parseFloat(inp.value);
+        if (!newAmt || newAmt <= 0 || newAmt === oldAmt) {
+          badge.textContent = `${oldAmt}${unit}`; return;
+        }
+        badge.textContent = `${newAmt}${unit}`;
+        try {
+          // Update by delete + re-add with new amount
+          const mealNo   = badge.dataset.mealNo;
+          const foodName = badge.dataset.foodName;
+          const groups   = groupMeals(store.state.meals || []);
+          const group    = groups.find(g => g.mealNo === mealNo);
+          const foodRow  = group?.foods.find(f => f.food === foodName);
+          if (!foodRow) return;
+          await deleteFoodFromMeal(mealNo, foodName);
+          // Calculate scaled nutrition
+          const ratio = newAmt / (foodRow.amount || 1);
+          const updatedFood = {
+            no:       foodRow.foodNo || null,
+            name:     foodName,
+            unit:     foodRow.unit,
+            amount:   newAmt,
+            baseAmount: newAmt,
+            calories: Math.round((foodRow.calories || 0) * ratio),
+            protein:  Math.round((foodRow.protein  || 0) * ratio * 10) / 10,
+            carbs:    Math.round((foodRow.carbs    || 0) * ratio * 10) / 10,
+            fat:      Math.round((foodRow.fat      || 0) * ratio * 10) / 10,
+            fibre:    Math.round((foodRow.fibre    || 0) * ratio * 10) / 10,
+          };
+          await addFoodToMeal(mealNo, group.name, updatedFood);
+          store.state.meals = null;
+          await loadMeals(true);
+          // Re-open expand
+          const expand = document.getElementById(`expand-${mealNo}`);
+          if (expand) expand.style.display = 'block';
+        } catch (err) {
+          console.error('[meals] amt edit:', err);
+          showToast('Failed to update amount', 'error');
+          badge.textContent = `${oldAmt}${unit}`;
+        }
+      };
+      inp.addEventListener('blur', confirm);
+      inp.addEventListener('keydown', e => {
+        if (e.key === 'Enter') inp.blur();
+        if (e.key === 'Escape') { badge.textContent = `${oldAmt}${unit}`; }
+      });
     });
   });
 
