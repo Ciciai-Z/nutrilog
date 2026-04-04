@@ -3,34 +3,15 @@
 // Fixed: iOS keyboard toolbar suppressed (type=text + inputmode=search)
 //        Processing overlay on Add button
 //        Dynamic nutrition preview in add sheet
-//        Favourites Add → full-page overlay during processing
 // ============================================================
 import { CONFIG } from '../config.js';
-import { getFavourites, toggleFavourite, addLogEntry, addQuickAdd } from './api.js';
+import { getFavourites, toggleFavourite, addLogEntry } from './api.js';
 import { store } from './store.js';
 import { showToast } from './ui.js';
 import { calcCalories, today } from './utils.js';
 import { invalidateLogCache, renderSidebarSummary } from './log.js';
 
 let selectedMealType = CONFIG.labels.mealTypes[0];
-
-// ── Shared overlay helper (mirrors log.js setPageBusy) ────────
-function setPageBusy(busy) {
-  const OVERLAY_ID = 'log-busy-overlay';
-  if (busy) {
-    if (document.getElementById(OVERLAY_ID)) return;
-    const overlay = document.createElement('div');
-    overlay.id = OVERLAY_ID;
-    overlay.style.cssText = [
-      'position:fixed', 'inset:0', 'z-index:8888',
-      'background:rgba(242,239,233,0.45)',
-      'cursor:wait', 'pointer-events:all',
-    ].join(';');
-    document.body.appendChild(overlay);
-  } else {
-    document.getElementById(OVERLAY_ID)?.remove();
-  }
-}
 
 // ── Data loading ──────────────────────────────────────────────
 export async function ensureFoodsLoaded() {
@@ -70,25 +51,19 @@ export async function openSearchSheet() {
   sheet.innerHTML = `
     <div class="bottom-sheet__backdrop"></div>
     <div class="bottom-sheet__panel" style="padding:12px 14px 40px;max-height:85vh">
-      <div style="display:flex;gap:8px;margin-bottom:8px;align-items:center">
-        <input id="mobile-sheet-input" class="search-input"
-          type="text" inputmode="search" enterkeyhint="search"
-          placeholder="Search foods…"
-          autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false"
-          style="flex:1;font-size:16px;margin-bottom:0">
-        <button id="mobile-quick-add-btn" class="btn btn--ghost"
-          style="white-space:nowrap;font-size:14px;padding:8px 12px;flex-shrink:0">⚡ Quick Add</button>
-      </div>
+      <input id="mobile-sheet-input" class="search-input"
+        type="text"
+        inputmode="search"
+        enterkeyhint="search"
+        placeholder="Search foods…"
+        autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false"
+        style="margin-bottom:8px;font-size:16px">
       <div id="mobile-sheet-results" class="search-results"
         style="max-height:60vh;overflow-y:auto;padding:0"></div>
     </div>`;
   document.body.appendChild(sheet);
   requestAnimationFrame(() => sheet.classList.add('bottom-sheet--visible'));
   sheet.querySelector('.bottom-sheet__backdrop').addEventListener('click', closeMobileSheet);
-  sheet.querySelector('#mobile-quick-add-btn').addEventListener('click', () => {
-    closeMobileSheet();
-    openQuickAddSheet();
-  });
 
   const input = document.getElementById('mobile-sheet-input');
   setTimeout(() => input?.focus(), 80);
@@ -124,130 +99,6 @@ async function runSheetSearch(rawQuery) {
     row.querySelector('.result-info')?.addEventListener('click', () => { closeMobileSheet(); openAddSheet(no); });
     row.querySelector('.fav-btn')?.addEventListener('click', e => { e.stopPropagation(); handleToggleFavourite(no, row); });
   });
-}
-
-// ── B6: iPhone Quick Add sheet ────────────────────────────────
-export function openQuickAddSheet() {
-  document.getElementById('quick-add-sheet')?.remove();
-  const sheet = document.createElement('div');
-  sheet.id = 'quick-add-sheet';
-  sheet.className = 'bottom-sheet';
-  const options = CONFIG.labels.mealTypes.map(t => `<option>${t}</option>`).join('');
-
-  // Helper: number field with max=3000, step=0.1, max 1 decimal
-  const numField = (id, label, required = false) => `
-    <div>
-      <label class="sheet-label">${label}${required ? ' *' : ''}</label>
-      <input id="${id}" class="sheet-input" type="number"
-        min="0" max="3000" step="0.1"
-        placeholder="${required ? 'required' : '0'}"
-        inputmode="decimal" style="font-size:16px">
-    </div>`;
-
-  sheet.innerHTML = `
-    <div class="bottom-sheet__backdrop"></div>
-    <div class="bottom-sheet__panel">
-      <div class="bottom-sheet__header">
-        <span class="bottom-sheet__title">⚡ Quick Add</span>
-        <span class="bottom-sheet__sub">Enter nutrition values directly</span>
-      </div>
-      <div class="bottom-sheet__body" style="display:flex;flex-direction:column;gap:10px">
-        <div>
-          <label class="sheet-label">Name *</label>
-          <input id="qa-name" class="sheet-input" type="text"
-            placeholder="e.g. Restaurant noodles"
-            autocomplete="off" style="font-size:16px">
-        </div>
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
-          ${numField('qa-calories','Calories (kcal)', true)}
-          ${numField('qa-protein','Protein (g)')}
-          ${numField('qa-carbs','Carbs (g)')}
-          ${numField('qa-fat','Fat (g)')}
-          ${numField('qa-fibre','Fibre (g)')}
-          <div>
-            <label class="sheet-label">Meal</label>
-            <select id="qa-meal" class="sheet-select" style="font-size:16px">${options}</select>
-          </div>
-        </div>
-      </div>
-      <div class="bottom-sheet__footer">
-        <button id="qa-cancel" class="btn btn--ghost">Cancel</button>
-        <button id="qa-confirm" class="btn btn--primary">Add to Log</button>
-      </div>
-    </div>`;
-  document.body.appendChild(sheet);
-  requestAnimationFrame(() => sheet.classList.add('bottom-sheet--visible'));
-
-  const closeQA = () => {
-    sheet.classList.remove('bottom-sheet--visible');
-    setTimeout(() => sheet.remove(), 250);
-  };
-  sheet.querySelector('.bottom-sheet__backdrop').addEventListener('click', closeQA);
-  sheet.querySelector('#qa-cancel').addEventListener('click', closeQA);
-  sheet.querySelector('#qa-confirm').addEventListener('click', () => confirmQuickAdd(sheet, closeQA));
-
-  // Clamp to 1 decimal + max 3000 on every input
-  sheet.querySelectorAll('input[type="number"]').forEach(inp => {
-    if (inp.id === 'qa-name') return;
-    inp.addEventListener('input', () => {
-      let v = parseFloat(inp.value);
-      if (isNaN(v) || v < 0) { inp.value = ''; return; }
-      if (v > 3000) v = 3000;
-      // Round to 1 decimal place
-      inp.value = Math.round(v * 10) / 10;
-    });
-  });
-}
-
-async function confirmQuickAdd(sheet, closeQA) {
-  const { today: getToday } = await import('./utils.js');
-
-  const name = sheet.querySelector('#qa-name').value.trim();
-  if (!name) { showToast('Name is required', 'error'); sheet.querySelector('#qa-name').focus(); return; }
-
-  const calories = parseFloat(sheet.querySelector('#qa-calories').value);
-  if (!calories || calories <= 0) { showToast('Calories is required', 'error'); sheet.querySelector('#qa-calories').focus(); return; }
-
-  // Clamp + round all values to 1 decimal
-  const clamp = v => { const n = Math.round((parseFloat(v) || 0) * 10) / 10; return Math.min(Math.max(n, 0), 3000); };
-  const calsClamped = Math.min(Math.round(calories), 3000);
-  const protein  = clamp(sheet.querySelector('#qa-protein').value);
-  const carbs    = clamp(sheet.querySelector('#qa-carbs').value);
-  const fat      = clamp(sheet.querySelector('#qa-fat').value);
-  const fibre    = clamp(sheet.querySelector('#qa-fibre').value);
-  const mealType = sheet.querySelector('#qa-meal').value || 'Other';
-
-  const confirmBtn = sheet.querySelector('#qa-confirm');
-  const cancelBtn  = sheet.querySelector('#qa-cancel');
-  confirmBtn.disabled = true; confirmBtn.textContent = 'Adding…';
-  cancelBtn.disabled  = true;
-  setPageBusy(true);
-
-  try {
-    const date = store.state.currentDate || getToday();
-    // Pass calories as-is — GAS will store it directly (not recalculate)
-    const result = await addQuickAdd({
-      date, mealType, name,
-      calories: calsClamped, protein, carbs, fat, fibre,
-    });
-    if (!store.state.dailyLog) store.state.dailyLog = {};
-    if (!store.state.dailyLog[date]) store.state.dailyLog[date] = [];
-    const { getDailyLog } = await import('./api.js');
-    store.state.dailyLog[date] = await getDailyLog(date);
-    const logMod = await import('./log.js');
-    if (logMod.refreshLog) logMod.refreshLog(date);
-    const { renderSidebarSummary } = await import('./log.js');
-    renderSidebarSummary(store.state.dailyLog[date]);
-    showToast(`${name} added ✓`, 'success');
-    closeQA();
-  } catch (err) {
-    console.error('[search] confirmQuickAdd:', err);
-    showToast('Failed to add — please try again', 'error');
-    confirmBtn.disabled = false; confirmBtn.textContent = 'Add to Log';
-    cancelBtn.disabled  = false;
-  } finally {
-    setPageBusy(false);
-  }
 }
 
 // ── Favourites page ───────────────────────────────────────────
@@ -370,11 +221,9 @@ async function handleFavAdd(row, no) {
   const mealType=mealSel?.value||'Breakfast';
   if(!amount||amount<=0){showToast('Enter a valid amount','error');return;}
 
-  // Processing: overlay blocks entire page + disable local controls
-  setPageBusy(true);
+  // Processing state — disable entire expand panel
   if(addBtn){addBtn.disabled=true;addBtn.textContent='Adding…';}
-  if(amtInput)amtInput.disabled=true;
-  if(mealSel)mealSel.disabled=true;
+  if(amtInput)amtInput.disabled=true;if(mealSel)mealSel.disabled=true;
 
   try{
     const date=store.state.currentDate||today(),ratio=amount/(food.amount||100);
@@ -385,20 +234,14 @@ async function handleFavAdd(row, no) {
       sodium:Math.round((food.sodium||0)*ratio),potassium:Math.round((food.potassium||0)*ratio),
     });
     if(!store.state.lastAmounts)store.state.lastAmounts={};store.state.lastAmounts[no]=amount;
-    invalidateLogCache(date);
-    const{getDailyLog}=await import('./api.js');
-    store.state.dailyLog[date]=await getDailyLog(date);
+    invalidateLogCache(date);const{getDailyLog}=await import('./api.js');store.state.dailyLog[date]=await getDailyLog(date);
     renderSidebarSummary(store.state.dailyLog[date]);
     row.classList.remove('favs-row--selected');
     showToast(`${food.name} added ✓`,'success');
-  }catch(err){
-    console.error('[search] handleFavAdd:',err);
-    showToast('Failed to add','error');
-  }finally{
-    setPageBusy(false);
+  }catch(err){console.error('[search] handleFavAdd:',err);showToast('Failed to add','error');}
+  finally{
     if(addBtn){addBtn.disabled=false;addBtn.textContent='+ Add';}
-    if(amtInput)amtInput.disabled=false;
-    if(mealSel)mealSel.disabled=false;
+    if(amtInput)amtInput.disabled=false;if(mealSel)mealSel.disabled=false;
   }
 }
 
@@ -510,7 +353,15 @@ async function confirmAddFood(food, sheet) {
   try{
     await addLogEntry(entry);
     if(!store.state.lastAmounts)store.state.lastAmounts={};store.state.lastAmounts[food.no]=amount;
-    invalidateLogCache(date);showToast(`Added ${food.name} ✓`,'success');closeAddSheet();
+    // Bug3 fix: re-fetch log and re-render so meal section totals update immediately
+    invalidateLogCache(date);
+    const { getDailyLog } = await import('./api.js');
+    store.state.dailyLog[date] = await getDailyLog(date);
+    const logMod = await import('./log.js');
+    if (logMod.refreshLog) logMod.refreshLog(date);
+    logMod.renderSidebarSummary?.(store.state.dailyLog[date]);
+    showToast(`Added ${food.name} ✓`,'success');
+    closeAddSheet();
   }catch(err){
     console.error('[search] confirmAddFood:',err);showToast('Failed to add food','error');
     if(confirmBtn){confirmBtn.disabled=false;confirmBtn.textContent='Add to Log';}

@@ -93,6 +93,12 @@ export async function saveMeal(meal) {
 export async function deleteMeal(mealNo) {
   return (await jsonpFetch('deleteMeal', { mealNo })).data;
 }
+export async function deleteFoodFromMeal(mealNo, foodName) {
+  return (await jsonpFetch('deleteFoodFromMeal', { mealNo, foodName })).data;
+}
+export async function addFoodToMeal(mealNo, mealName, food) {
+  return (await jsonpFetch('addFoodToMeal', { mealNo, mealName, food })).data;
+}
 
 // ── B9 History ────────────────────────────────────────────────
 export async function getHistory() {

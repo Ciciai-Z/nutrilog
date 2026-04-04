@@ -29,10 +29,12 @@ function route(action, params) {
     case 'updateLogEntry':  return updateLogEntry(params);
     case 'syncDailySummary':return syncDailySummary(params);
     case 'addQuickAdd':     return addQuickAdd(params);
-    case 'getMeals':        return getMeals(params);
-    case 'saveMeal':        return saveMeal(params);
-    case 'deleteMeal':      return deleteMeal(params);
-    case 'getHistory':      return getHistory(params);
+    case 'getMeals':            return getMeals(params);
+    case 'saveMeal':            return saveMeal(params);
+    case 'deleteMeal':          return deleteMeal(params);
+    case 'deleteFoodFromMeal':  return deleteFoodFromMeal(params);
+    case 'addFoodToMeal':       return addFoodToMeal(params);
+    case 'getHistory':          return getHistory(params);
     default: return { ok: false, error: `Unknown action: ${action}` };
   }
 }
@@ -264,7 +266,11 @@ function addLogEntry(params) {
   row[C.name]            = e.name;
   row[C.amount]          = Number(e.amount)    || 0;
   row[C.unit]            = e.unit              || 'g';
-  row[C.calories]        = Math.round((Number(e.fat)||0)*9 + (Number(e.carbs)||0)*4 + (Number(e.protein)||0)*4);
+  // Use caller's calories if explicitly provided (e.g. Quick Add); else calculate from macros
+  const calFromMacros = Math.round((Number(e.fat)||0)*9 + (Number(e.carbs)||0)*4 + (Number(e.protein)||0)*4);
+  row[C.calories]        = (e.calories !== undefined && e.calories !== null && e.calories !== '')
+    ? Math.round(Number(e.calories))
+    : calFromMacros;
   row[C.protein]         = Number(e.protein)   || 0;
   row[C.carbs]           = Number(e.carbs)     || 0;
   row[C.fat]             = Number(e.fat)       || 0;
@@ -277,37 +283,41 @@ function addLogEntry(params) {
 }
 
 // ── B5: deleteLogEntry — B6: cascade Quick Add ─────────────────
+// payload.skipCascade=true: only delete DailyLog row (used by moveEntry)
 function deleteLogEntry(params) {
   if (!verifyToken(params.token || '')) return { ok: false, error: 'Unauthorized' };
   let payload;
   try { payload = JSON.parse(decodeURIComponent(params.payload || '{}')); }
   catch (e) { return { ok: false, error: 'Invalid payload' }; }
-  const rowIndex = Number(payload.rowIndex);
+  const rowIndex    = Number(payload.rowIndex);
+  const skipCascade = payload.skipCascade === true;
   if (!rowIndex || rowIndex < 2) return { ok: false, error: 'Invalid rowIndex' };
 
   const logSh  = getSheet(CONFIG.sheets.dailyLog);
-  const logRow = logSh.getRange(rowIndex, 1, 1, 14).getValues()[0];
   const CL     = CONFIG.columns.dailyLog;
-  const foodNo = logRow[CL.foodNo] ? Number(logRow[CL.foodNo]) : null;
 
   // B6: cascade-delete CustomFoods + Favourites if IS_QUICK_ADD = TRUE
-  if (foodNo && foodNo >= 50001) {
-    const cfSh   = getSheet(CONFIG.sheets.customFoods);
-    const cfRows = cfSh.getDataRange().getValues();
-    const CC     = CONFIG.columns.customFoods;
-    for (let i = 1; i < cfRows.length; i++) {
-      if (Number(cfRows[i][CC.no]) === foodNo) {
-        const isQA = cfRows[i][CC.isQuickAdd] === true || cfRows[i][CC.isQuickAdd] === 'TRUE';
-        if (isQA) {
-          cfSh.deleteRow(i + 1);
-          // Also remove from Favourites if starred
-          const favSh   = getSheet(CONFIG.sheets.favourites);
-          const favRows = favSh.getDataRange().getValues();
-          for (let j = 1; j < favRows.length; j++) {
-            if (Number(favRows[j][0]) === foodNo) { favSh.deleteRow(j + 1); break; }
+  // Skip when called from moveEntry (skipCascade=true) — food still exists, just moving meal type
+  if (!skipCascade) {
+    const logRow = logSh.getRange(rowIndex, 1, 1, 14).getValues()[0];
+    const foodNo = logRow[CL.foodNo] ? Number(logRow[CL.foodNo]) : null;
+    if (foodNo && foodNo >= 50001) {
+      const cfSh   = getSheet(CONFIG.sheets.customFoods);
+      const cfRows = cfSh.getDataRange().getValues();
+      const CC     = CONFIG.columns.customFoods;
+      for (let i = 1; i < cfRows.length; i++) {
+        if (Number(cfRows[i][CC.no]) === foodNo) {
+          const isQA = cfRows[i][CC.isQuickAdd] === true || cfRows[i][CC.isQuickAdd] === 'TRUE';
+          if (isQA) {
+            cfSh.deleteRow(i + 1);
+            const favSh   = getSheet(CONFIG.sheets.favourites);
+            const favRows = favSh.getDataRange().getValues();
+            for (let j = 1; j < favRows.length; j++) {
+              if (Number(favRows[j][0]) === foodNo) { favSh.deleteRow(j + 1); break; }
+            }
           }
+          break;
         }
-        break;
       }
     }
   }
@@ -552,6 +562,68 @@ function deleteMeal(params) {
   }
   return { ok: true, data: null };
 }
+
+// ── B8: deleteFoodFromMeal ─────────────────────────────────────
+// Deletes a single food row from a meal (matched by mealNo + food name)
+function deleteFoodFromMeal(params) {
+  if (!verifyToken(params.token || '')) return { ok: false, error: 'Unauthorized' };
+  let payload;
+  try { payload = JSON.parse(decodeURIComponent(params.payload || '{}')); }
+  catch (e) { return { ok: false, error: 'Invalid payload' }; }
+  const mealNo   = String(payload.mealNo   || '').trim();
+  const foodName = String(payload.foodName || '').trim();
+  if (!mealNo || !foodName) return { ok: false, error: 'Missing mealNo or foodName' };
+  const sh   = getSheet(CONFIG.sheets.meals);
+  const rows = sh.getDataRange().getValues();
+  const CM   = CONFIG.columns.meals;
+  // Delete from bottom up to avoid row shift
+  let deleted = 0;
+  for (let i = rows.length - 1; i >= 1; i--) {
+    if (String(rows[i][CM.mealNo]) === mealNo &&
+        String(rows[i][CM.food])   === foodName) {
+      sh.deleteRow(i + 1);
+      deleted++;
+      break; // only delete first match (one row per food per meal)
+    }
+  }
+  return { ok: true, data: { deleted } };
+}
+
+// ── B8: addFoodToMeal ──────────────────────────────────────────
+// Appends a single food row to an existing meal
+function addFoodToMeal(params) {
+  if (!verifyToken(params.token || '')) return { ok: false, error: 'Unauthorized' };
+  let payload;
+  try { payload = JSON.parse(decodeURIComponent(params.payload || '{}')); }
+  catch (e) { return { ok: false, error: 'Invalid payload' }; }
+  const mealNo   = String(payload.mealNo   || '').trim();
+  const mealName = String(payload.mealName || '').trim();
+  const food     = payload.food || {};
+  if (!mealNo || !mealName || !food.name) return { ok: false, error: 'Missing fields' };
+  const sh  = getSheet(CONFIG.sheets.meals);
+  const CM  = CONFIG.columns.meals;
+  const dt  = Utilities.formatDate(new Date(), Session.getScriptTimeZone(), "d/M/yy H:mm");
+  const date = Utilities.formatDate(new Date(), Session.getScriptTimeZone(), "EEE,d/M/yy");
+  const amount = Number(food.amount) || 100;
+  const ratio  = amount / (Number(food.baseAmount) || food.amount || 100);
+  const row = new Array(13).fill('');
+  row[CM.date]            = date;
+  row[CM.mealNo]          = mealNo;
+  row[CM.name]            = mealName;
+  row[CM.food]            = String(food.name || '');
+  row[CM.foodNo]          = food.no || '';
+  row[CM.amount]          = amount;
+  row[CM.unit]            = String(food.unit || 'g');
+  row[CM.calories]        = Math.round((Number(food.calories)||0) * ratio);
+  row[CM.protein]         = Math.round((Number(food.protein) ||0) * ratio * 10) / 10;
+  row[CM.carbs]           = Math.round((Number(food.carbs)   ||0) * ratio * 10) / 10;
+  row[CM.fat]             = Math.round((Number(food.fat)     ||0) * ratio * 10) / 10;
+  row[CM.fibre]           = Math.round((Number(food.fibre)   ||0) * ratio * 10) / 10;
+  row[CM.createdDatetime] = dt;
+  sh.appendRow(row);
+  return { ok: true, data: null };
+}
+
 
 // ── B9: getHistory ─────────────────────────────────────────────
 function getHistory(params) {
