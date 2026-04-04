@@ -506,3 +506,8 @@ function updateFavBtn(rowEl, isFav) {
 }
 
 function escHtml(s){return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
+
+// Register on window so log.js can call without dynamic import
+window.__nutrilog_openQuickAdd  = openQuickAddSheet;
+window.__nutrilog_openSearch    = openSearchSheet;
+window.__nutrilog_ensureFavs    = ensureFavouritesLoaded;

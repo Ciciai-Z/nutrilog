@@ -29,7 +29,7 @@ export async function initLog(macMode = false) {
   else         renderLogShellMobile(date);
   // Run favourites load + daily log fetch in parallel to halve wait time
   await Promise.all([
-    import('./search.js').then(m => m.ensureFavouritesLoaded()).catch(() => {}),
+    Promise.resolve(typeof window.__nutrilog_ensureFavs === 'function' ? window.__nutrilog_ensureFavs() : null).catch(()=>{}),
     loadAndRender(date),
   ]);
   console.log('[log] initLog → ready');
@@ -197,8 +197,8 @@ function bindMobileSearch(id) {
   const input = document.getElementById(id); if (!input) return;
   input.addEventListener('focus', async () => {
     input.blur();
-    try{const{openSearchSheet}=await import('./search.js');openSearchSheet();}
-    catch(err){console.error('[log] openSearchSheet:',err);}
+    if (typeof window.__nutrilog_openSearch === 'function') window.__nutrilog_openSearch();
+    else console.error('[log] openSearchSheet not ready');
   });
 }
 
@@ -265,10 +265,14 @@ function bindMacSearch() {
   const hideDD=()=>{pill.classList.remove('mac-search-pill--expanded');dropdown.classList.remove('mac-search-dropdown--visible');addBar.style.display='none';nutPrev.style.display='none';_macSelFood=null;};
 
   // Mac Quick Add button
-  document.getElementById('mac-quick-add-btn')?.addEventListener('click', async () => {
+  document.getElementById('mac-quick-add-btn')?.addEventListener('click', () => {
     hideDD();
-    try { const { openQuickAddSheet } = await import('./search.js'); openQuickAddSheet(); }
-    catch(err) { console.error('[log] mac quickAdd:', err); }
+    // Use window-registered function to avoid dynamic import cache issues
+    if (typeof window.__nutrilog_openQuickAdd === 'function') {
+      window.__nutrilog_openQuickAdd();
+    } else {
+      console.error('[log] openQuickAddSheet not registered yet');
+    }
   });
 
   input.addEventListener('focus',()=>{showDD();renderDD(getFavFoods().slice(0,8));});
